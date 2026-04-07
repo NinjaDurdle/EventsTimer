@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Display</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: var(--bg-color, #000000);
+      transition: background 0.3s;
+    }
+
+    /* Timer block — absolutely positioned so it can be dragged/placed */
+    #timer-block {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      /* top/left set by JS from positionX/positionY */
+    }
+
+    #label {
+      font-family: var(--font, monospace);
+      font-size: calc(var(--font-size, 20) * 0.2vw);
+      color: var(--text-color, #ffffff);
+      letter-spacing: 0.05em;
+      margin-bottom: 0.4em;
+      opacity: 0.7;
+      min-height: 1em;
+      white-space: nowrap;
+    }
+
+    /* Timer digits rendered as individual spans so we can hide columns */
+    #timer {
+      display: flex;
+      align-items: baseline;
+      font-family: var(--font, monospace);
+      font-size: calc(var(--font-size, 20) * 1vw);
+      color: var(--text-color, #ffffff);
+      letter-spacing: 0.02em;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      transition: color 0.2s;
+      white-space: nowrap;
+    }
+
+    .digit-pair { display: inline-flex; }
+    .digit-pair.hidden { display: none; }
+
+    .sep {
+      display: inline;
+      opacity: 0.7;
+      padding: 0 0.04em;
+    }
+    .sep.hidden { display: none; }
+
+    /* Message area — absolutely positioned, driven by positionX/Y */
+    #message-block {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      max-width: 90vw;
+      text-align: center;
+      /* top/left set by JS */
+    }
+
+    #message-text {
+      font-family: var(--msg-font, monospace);
+      font-size: calc(var(--msg-font-size, 5) * 1vw);
+      color: var(--msg-text-color, #ffffff);
+      background: var(--msg-bg-color, transparent);
+      padding: 0.2em 0.5em;
+      border-radius: 0.2em;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    #message-block.hidden { display: none; }
+
+    /* Flash animation */
+    @keyframes flash {
+      0%, 100% { background: var(--bg-color, #000000); }
+      50%       { background: var(--flash-color, #ff0000); }
+    }
+    body.flash-active { animation: flash 0.6s ease-in-out infinite; }
+
+    /* Offline overlay */
+    #offline {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      color: #ff4444;
+      font-family: monospace;
+      font-size: 3vw;
+      align-items: center;
+      justify-content: center;
+    }
+    #offline.visible { display: flex; }
+  </style>
+  <!-- Bundled fonts — served locally so display works offline.
+       Falls back to system fonts if the file isn't present (pre-install). -->
+  <style>
+    @font-face {
+      font-family: "Nunito";
+      src: url("/fonts/Nunito-Regular.woff2") format("woff2");
+      font-weight: 400; font-style: normal; font-display: swap;
+    }
+    @font-face {
+      font-family: "Nunito";
+      src: url("/fonts/Nunito-Bold.woff2") format("woff2");
+      font-weight: 700; font-style: normal; font-display: swap;
+    }
+    @font-face {
+      font-family: "Quicksand";
+      src: url("/fonts/Quicksand-Regular.woff2") format("woff2");
+      font-weight: 400; font-style: normal; font-display: swap;
+    }
+    @font-face {
+      font-family: "Roboto Mono";
+      src: url("/fonts/RobotoMono-Regular.woff2") format("woff2");
+      font-weight: 400; font-style: normal; font-display: swap;
+    }
+    @font-face {
+      font-family: "Share Tech Mono";
+      src: url("/fonts/ShareTechMono-Regular.woff2") format("woff2");
+      font-weight: 400; font-style: normal; font-display: swap;
+    }
+  </style>
+</head>
+<body>
+  <div id="timer-block">
+    <div id="label"></div>
+    <div id="timer">
+      <!-- tens-hours -->
+      <span class="digit-pair" id="dp-th"><span id="d-th">0</span></span>
+      <!-- ones-hours -->
+      <span class="digit-pair" id="dp-oh"><span id="d-oh">0</span></span>
+      <!-- colon after hours -->
+      <span class="sep" id="sep-h">:</span>
+      <!-- tens-minutes -->
+      <span class="digit-pair" id="dp-tm"><span id="d-tm">0</span></span>
+      <!-- ones-minutes -->
+      <span class="digit-pair" id="dp-om"><span id="d-om">5</span></span>
+      <!-- colon after minutes -->
+      <span class="sep" id="sep-m">:</span>
+      <!-- tens-seconds -->
+      <span class="digit-pair" id="dp-ts"><span id="d-ts">0</span></span>
+      <!-- ones-seconds -->
+      <span class="digit-pair" id="dp-os"><span id="d-os">0</span></span>
+    </div>
+  </div>
+
+  <div id="message-block" class="hidden">
+    <div id="message-text"></div>
+  </div>
+
+  <div id="offline">⚠ CONNECTION LOST — RECONNECTING…</div>
+
+  <script>
+    const root       = document.documentElement;
+    const timerBlock = document.getElementById("timer-block");
+    const labelEl    = document.getElementById("label");
+    const offlineEl  = document.getElementById("offline");
+    const msgBlock   = document.getElementById("message-block");
+    const msgText    = document.getElementById("message-text");
+
+    // Digit elements [tensHours, onesHours, tensMins, onesMins, tensSecs, onesSecs]
+    const digitPairs = [
+      document.getElementById("dp-th"),
+      document.getElementById("dp-oh"),
+      document.getElementById("dp-tm"),
+      document.getElementById("dp-om"),
+      document.getElementById("dp-ts"),
+      document.getElementById("dp-os"),
+    ];
+    const digitSpans = [
+      document.getElementById("d-th"),
+      document.getElementById("d-oh"),
+      document.getElementById("d-tm"),
+      document.getElementById("d-om"),
+      document.getElementById("d-ts"),
+      document.getElementById("d-os"),
+    ];
+    const sepH = document.getElementById("sep-h");
+    const sepM = document.getElementById("sep-m");
+
+    // ── WebSocket ──────────────────────────────────────────────────────────────
+    let ws;
+    let reconnectDelay = 1000;
+
+    function connect() {
+      ws = new WebSocket(`ws://${location.host}`);
+      ws.addEventListener("open", () => {
+        reconnectDelay = 1000;
+        offlineEl.classList.remove("visible");
+      });
+      ws.addEventListener("message", (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "state")  applyState(msg.payload);
+        if (msg.type === "reload") window.location.reload();
+      });
+      ws.addEventListener("close", () => {
+        offlineEl.classList.add("visible");
+        setTimeout(connect, Math.min(reconnectDelay, 10000));
+        reconnectDelay = Math.min(reconnectDelay * 1.5, 10000);
+      });
+      ws.addEventListener("error", () => ws.close());
+    }
+
+    // ── State Application ──────────────────────────────────────────────────────
+
+    function applyState({ timer, display, message: msgCfg }) {
+      // CSS variables
+      root.style.setProperty("--font",        display.font);
+      root.style.setProperty("--font-size",   display.fontSize);
+      root.style.setProperty("--text-color",  display.textColor);
+      root.style.setProperty("--bg-color",    display.bgColor);
+      root.style.setProperty("--flash-color", display.flashColor);
+
+      // Message CSS variables + position
+      if (msgCfg) {
+        root.style.setProperty("--msg-font",       msgCfg.font);
+        root.style.setProperty("--msg-font-size",  msgCfg.fontSize);
+        root.style.setProperty("--msg-text-color", msgCfg.textColor);
+
+        // Compute rgba from hex color + bgOpacity (0-100)
+        const opacity = typeof msgCfg.bgOpacity === "number" ? msgCfg.bgOpacity / 100 : 0;
+        if (opacity === 0) {
+          root.style.setProperty("--msg-bg-color", "transparent");
+        } else {
+          const hex = msgCfg.bgColor || "#000000";
+          const r   = parseInt(hex.slice(1,3), 16);
+          const g   = parseInt(hex.slice(3,5), 16);
+          const b   = parseInt(hex.slice(5,7), 16);
+          root.style.setProperty("--msg-bg-color", `rgba(${r},${g},${b},${opacity})`);
+        }
+
+        // Position
+        const mx = typeof msgCfg.positionX === "number" ? msgCfg.positionX : 50;
+        const my = typeof msgCfg.positionY === "number" ? msgCfg.positionY : 90;
+        const mw = typeof msgCfg.width      === "number" ? msgCfg.width      : 80;
+        msgBlock.style.left     = mx + "%";
+        msgBlock.style.top      = my + "%";
+        msgBlock.style.width    = mw + "vw";
+        msgBlock.style.maxWidth = mw + "vw";
+      }
+
+      // Position
+      const px = typeof display.positionX === "number" ? display.positionX : 50;
+      const py = typeof display.positionY === "number" ? display.positionY : 50;
+      timerBlock.style.left = px + "%";
+      timerBlock.style.top  = py + "%";
+
+      // Label
+      labelEl.textContent = display.label || "";
+
+      // Color triggers (countdown only)
+      let activeTextColor = display.textColor;
+      let activeBgColor   = display.bgColor;
+      if (timer.mode === "countdown" && Array.isArray(display.colorTriggers)) {
+        // Triggers are sorted descending by atMs; find the first one we're at or below
+        const active = display.colorTriggers.find(t => timer.currentMs <= t.atMs);
+        if (active) {
+          activeTextColor = active.textColor;
+          activeBgColor   = active.bgColor;
+        }
+      }
+      root.style.setProperty("--text-color", activeTextColor);
+      root.style.setProperty("--bg-color",   activeBgColor);
+
+      // Digit visibility
+      const vis = Array.isArray(display.visibleDigits) && display.visibleDigits.length === 6
+        ? display.visibleDigits
+        : [false, false, true, true, true, true];
+
+      // Hours separator visible only if at least one hour digit is visible
+      const hoursVisible = vis[0] || vis[1];
+      // Seconds separator visible only if at least one second digit is visible
+      const secsVisible  = vis[4] || vis[5];
+
+      digitPairs.forEach((dp, i) => dp.classList.toggle("hidden", !vis[i]));
+      sepH.classList.toggle("hidden", !hoursVisible);
+      sepM.classList.toggle("hidden", !secsVisible);
+
+      // Digit values
+      const ms       = timer.currentMs;
+      const totalSec = Math.floor(ms / 1000);
+      const hours    = Math.floor(totalSec / 3600);
+      const minutes  = Math.floor((totalSec % 3600) / 60);
+      const seconds  = totalSec % 60;
+      const tenths   = Math.floor((ms % 1000) / 100);
+
+      const hh = String(hours).padStart(2, "0");
+      const mm = String(minutes).padStart(2, "0");
+      const ss = String(seconds).padStart(2, "0");
+
+      digitSpans[0].textContent = hh[0];
+      digitSpans[1].textContent = hh[1];
+      digitSpans[2].textContent = mm[0];
+      digitSpans[3].textContent = mm[1];
+      digitSpans[4].textContent = ss[0];
+      digitSpans[5].textContent = ss[1];
+
+      // Subseconds — append to ones-seconds if enabled
+      digitSpans[5].textContent = display.showSubseconds
+        ? ss[1] + "." + tenths
+        : ss[1];
+
+      // Flash
+      const shouldFlash = timer.endReached && timer.endBehavior === "flash";
+      document.body.classList.toggle("flash-active", shouldFlash);
+
+      // Message
+      const hasMsg = timer.message && timer.message.trim().length > 0;
+      msgBlock.classList.toggle("hidden", !hasMsg);
+      if (hasMsg) msgText.textContent = timer.message;
+    }
+
+    connect();
+  </script>
+</body>
+</html>

@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Timer Control</title>
+  <style>
+    :root {
+      --accent: #4f9cf9;
+      --danger: #f95f4f;
+      --success: #4fc978;
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #242838;
+      --border: #2e3347;
+      --text: #e8eaf0;
+      --muted: #7b8197;
+      --radius: 10px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 16px;
+    }
+    .page-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    h1 { font-size: 1.1rem; font-weight: 600; color: var(--muted); }
+    h2 { font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+         letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px; }
+    .admin-link {
+      font-size: 0.72rem; color: var(--muted); text-decoration: none;
+      opacity: 0.5; transition: opacity 0.15s;
+    }
+    .admin-link:hover { opacity: 1; color: var(--accent); }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    /* Big timer */
+    #big-timer {
+      font-family: monospace;
+      font-size: clamp(2.5rem, 12vw, 5rem);
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+      letter-spacing: 0.04em;
+      padding: 12px 0;
+      transition: color 0.2s;
+    }
+    #big-timer.end { color: var(--danger); }
+    #mode-badge {
+      text-align: center;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+      margin-bottom: 4px;
+    }
+    /* Transport */
+    .transport {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    button {
+      padding: 12px 8px;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    button:active { transform: scale(0.96); }
+    button:disabled { opacity: 0.35; cursor: default; }
+    .btn-play   { background: var(--success); color: #000; }
+    .btn-stop   { background: var(--danger);  color: #fff; }
+    .btn-reset  { background: var(--surface2); color: var(--text);
+                  border: 1px solid var(--border); }
+    /* Jog buttons */
+    .jog-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .btn-jog {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 4px;
+      font-size: 0.82rem;
+    }
+    .btn-jog:hover { border-color: var(--accent); color: var(--accent); }
+    /* Time setter */
+    .time-inputs {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+    }
+    .time-field label {
+      display: block;
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+      text-align: center;
+    }
+    .time-field input {
+      width: 100%;
+      text-align: center;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 1.4rem;
+      font-family: monospace;
+      padding: 8px 4px;
+    }
+    .time-field input:focus { outline: none; border-color: var(--accent); }
+    .btn-set {
+      width: 100%;
+      margin-top: 10px;
+      background: var(--accent);
+      color: #000;
+    }
+    /* Mode tabs */
+    .mode-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+    }
+    .mode-tab {
+      padding: 8px;
+      border-radius: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+    }
+    .mode-tab.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #000;
+    }
+    /* Message section */
+    .message-input {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 10px;
+      font-size: 0.95rem;
+      resize: vertical;
+      min-height: 60px;
+      margin-bottom: 8px;
+    }
+    .message-input:focus { outline: none; border-color: var(--accent); }
+    .message-btns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .btn-send  { background: var(--accent); color: #000; }
+    .btn-clear { background: var(--surface2); border: 1px solid var(--border);
+                 color: var(--text); }
+    .btn-clear:hover { border-color: var(--danger); color: var(--danger); }
+    /* Active message indicator */
+    #msg-active {
+      font-size: 0.7rem;
+      color: var(--warning, #f9c74f);
+      margin-top: 6px;
+      min-height: 1em;
+    }
+    /* Presets */
+    .preset-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 10px;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .preset-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+    .preset-info { flex: 1; min-width: 0; }
+    .preset-name { font-size: 0.88rem; font-weight: 600; white-space: nowrap;
+                   overflow: hidden; text-overflow: ellipsis; }
+    .preset-meta { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
+    .preset-load { background: var(--surface); border: 1px solid var(--border);
+                   color: var(--text); font-size: 0.75rem; padding: 5px 10px; }
+    .preset-load:hover { border-color: var(--accent); color: var(--accent); }
+    .preset-delete { background: none; border: none; color: var(--danger);
+                     font-size: 1rem; padding: 4px 6px; opacity: 0.6; }
+    .preset-delete:hover { opacity: 1; }
+    .save-row { display: flex; gap: 8px; }
+    .save-row input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 8px 10px;
+      font-size: 0.88rem;
+    }
+    .save-row input:focus { outline: none; border-color: var(--accent); }
+    .btn-save { background: var(--surface2); border: 1px solid var(--border);
+                color: var(--text); padding: 8px 14px; }
+    .btn-save:hover { border-color: var(--accent); color: var(--accent); }
+    /* Status */
+    #status {
+      font-size: 0.7rem; color: var(--muted);
+      text-align: center; margin-top: 8px;
+    }
+    #status.connected    { color: var(--success); }
+    #status.disconnected { color: var(--danger); }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <h1>⏱ Timer Control</h1>
+    <a href="/admin" class="admin-link">⚙ Admin</a>
+  </div>
+
+  <!-- Live timer + transport -->
+  <div class="card">
+    <div id="mode-badge">COUNTDOWN</div>
+    <div id="big-timer">00:00:00</div>
+
+    <div class="mode-tabs" style="margin-bottom:12px;">
+      <div class="mode-tab active" data-mode="countdown">Countdown</div>
+      <div class="mode-tab"       data-mode="countup">Count Up</div>
+      <div class="mode-tab"       data-mode="clock">Clock</div>
+      <div class="mode-tab"       data-mode="external">External</div>
+    </div>
+
+    <div class="transport">
+      <button class="btn-play"  id="btn-play">▶ Start</button>
+      <button class="btn-stop"  id="btn-stop">⏹ Stop</button>
+      <button class="btn-reset" id="btn-reset">↺ Reset</button>
+    </div>
+
+    <!-- Jog controls -->
+    <div class="jog-grid">
+      <button class="btn-jog" data-delta="5">+5 min</button>
+      <button class="btn-jog" data-delta="1">+1 min</button>
+      <button class="btn-jog" data-delta="-1">−1 min</button>
+      <button class="btn-jog" data-delta="-5">−5 min</button>
+    </div>
+  </div>
+
+  <!-- Set time (hidden in clock mode) -->
+  <div class="card" id="set-time-card">
+    <h2>Set Time</h2>
+    <div class="time-inputs">
+      <div class="time-field">
+        <label>HH</label>
+        <input type="number" id="inp-hours" min="0" max="99" value="0">
+      </div>
+      <div class="time-field">
+        <label>MM</label>
+        <input type="number" id="inp-minutes" min="0" max="59" value="5">
+      </div>
+      <div class="time-field">
+        <label>SS</label>
+        <input type="number" id="inp-seconds" min="0" max="59" value="0">
+      </div>
+    </div>
+    <button class="btn-set" id="btn-set">Set Time</button>
+  </div>
+
+  <!-- Message -->
+  <div class="card">
+    <h2>Message</h2>
+    <textarea class="message-input" id="msg-input"
+              placeholder="Type a message to display below the timer…"
+              maxlength="200"></textarea>
+    <div class="message-btns">
+      <button class="btn-send"  id="btn-send-msg">Send</button>
+      <button class="btn-clear" id="btn-clear-msg">Clear</button>
+    </div>
+    <div id="msg-active"></div>
+  </div>
+
+  <!-- Presets -->
+  <div class="card">
+    <h2>Presets</h2>
+    <div class="preset-list" id="preset-list">
+      <div style="color:var(--muted);font-size:0.8rem;text-align:center;padding:12px 0;">
+        No presets saved yet
+      </div>
+    </div>
+    <div class="save-row">
+      <input type="text" id="preset-name" placeholder="Preset name…" maxlength="40">
+      <button class="btn-save" id="btn-save-preset">Save</button>
+    </div>
+  </div>
+
+  <div id="status">Connecting…</div>
+
+  <script>
+    // ── WebSocket ──────────────────────────────────────────────────────────────
+    let ws;
+    let latestState   = null;
+    let latestPresets = [];
+    let reconnectDelay = 1000;
+
+    const statusEl   = document.getElementById("status");
+    const btnPlay    = document.getElementById("btn-play");
+    const bigTimer   = document.getElementById("big-timer");
+    const modeBadge  = document.getElementById("mode-badge");
+    const setCard    = document.getElementById("set-time-card");
+    const modeTabs   = document.querySelectorAll(".mode-tab");
+    const msgActive  = document.getElementById("msg-active");
+
+    function connect() {
+      ws = new WebSocket(`ws://${location.host}`);
+      ws.addEventListener("open", () => {
+        reconnectDelay = 1000;
+        statusEl.textContent = "● Connected";
+        statusEl.className   = "connected";
+      });
+      ws.addEventListener("message", (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "state") {
+          latestState = msg.payload;
+          renderState(msg.payload);
+        } else if (msg.type === "presets") {
+          latestPresets = msg.payload;
+          renderPresets(msg.payload);
+        }
+      });
+      ws.addEventListener("close", () => {
+        statusEl.textContent = "● Disconnected — reconnecting…";
+        statusEl.className   = "disconnected";
+        setTimeout(connect, Math.min(reconnectDelay, 10000));
+        reconnectDelay = Math.min(reconnectDelay * 1.5, 10000);
+      });
+      ws.addEventListener("error", () => ws.close());
+    }
+
+    function send(msg) {
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+    }
+
+    // ── Rendering ──────────────────────────────────────────────────────────────
+
+    function renderState({ timer, display }) {
+      bigTimer.textContent = formatMs(timer.currentMs, display.showSubseconds);
+      bigTimer.classList.toggle("end", timer.endReached);
+
+      modeBadge.textContent = timer.mode === "external" ? "EXTERNAL SOURCE" : timer.mode.toUpperCase();
+
+      // Play/Pause toggle
+      if (timer.running) {
+        btnPlay.textContent = "⏸ Pause";
+        btnPlay.className   = "btn-play";
+      } else {
+        btnPlay.textContent = timer.mode === "clock" ? "▶ Start" : "▶ Start";
+        btnPlay.className   = "btn-play";
+      }
+
+      // Mode tabs
+      modeTabs.forEach(t => t.classList.toggle("active", t.dataset.mode === timer.mode));
+
+      // Hide set-time in clock mode
+      setCard.style.display = timer.mode === "clock" ? "none" : "";
+
+      // Active message indicator
+      if (timer.message && timer.message.trim()) {
+        msgActive.textContent = `● Showing: "${timer.message.slice(0, 40)}${timer.message.length > 40 ? "…" : ""}"`;
+      } else {
+        msgActive.textContent = "";
+      }
+    }
+
+    function renderPresets(presets) {
+      const list = document.getElementById("preset-list");
+      if (!presets.length) {
+        list.innerHTML = `<div style="color:var(--muted);font-size:0.8rem;text-align:center;padding:12px 0;">No presets saved yet</div>`;
+        return;
+      }
+      list.innerHTML = presets.map(p => `
+        <div class="preset-item">
+          <div class="preset-info">
+            <div class="preset-name">${escHtml(p.name)}</div>
+            <div class="preset-meta">${p.mode} · ${formatMs(p.targetMs)} · end: ${p.endBehavior}</div>
+          </div>
+          <button class="preset-load" data-id="${p.id}">Load</button>
+          <button class="preset-delete" data-id="${p.id}" title="Delete">✕</button>
+        </div>`).join("");
+    }
+
+    // ── Transport ──────────────────────────────────────────────────────────────
+
+    btnPlay.addEventListener("click", () => {
+      if (latestState && latestState.timer.running) {
+        // Currently running → pause (stop without zeroing)
+        // We send a raw stop that doesn't zero — but our stop now zeroes.
+        // So we use reset to stop cleanly without losing the time.
+        // Actually we want pause: stop tick but keep currentMs.
+        // We'll send a custom "pause" action which server treats as stop-without-zero.
+        send({ type: "command", payload: { action: "pause" } });
+      } else {
+        send({ type: "command", payload: { action: "start" } });
+      }
+    });
+
+    document.getElementById("btn-stop").addEventListener("click", () => {
+      send({ type: "command", payload: { action: "stop" } });
+      // Reset play button immediately without waiting for server round-trip
+      btnPlay.textContent = "▶ Start";
+      btnPlay.className   = "btn-play";
+    });
+
+    document.getElementById("btn-reset").addEventListener("click", () =>
+      send({ type: "command", payload: { action: "reset" } }));
+
+    // ── Jog buttons ────────────────────────────────────────────────────────────
+
+    document.querySelectorAll(".btn-jog").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const delta = parseInt(btn.dataset.delta, 10);
+        send({ type: "command", payload: {
+          action: delta > 0 ? "adjust" : "adjust",
+          deltaMs: delta * 60_000
+        }});
+      });
+    });
+
+    // ── Set time ───────────────────────────────────────────────────────────────
+
+    document.getElementById("btn-set").addEventListener("click", () => {
+      const h  = parseInt(document.getElementById("inp-hours").value,   10) || 0;
+      const m  = parseInt(document.getElementById("inp-minutes").value, 10) || 0;
+      const s  = parseInt(document.getElementById("inp-seconds").value, 10) || 0;
+      send({ type: "command", payload: { action: "setTime", ms: (h * 3600 + m * 60 + s) * 1000 } });
+    });
+
+    // ── Mode tabs ──────────────────────────────────────────────────────────────
+
+    modeTabs.forEach(tab => {
+      tab.addEventListener("click", () =>
+        send({ type: "command", payload: { action: "setMode", mode: tab.dataset.mode } }));
+    });
+
+    // ── Message ────────────────────────────────────────────────────────────────
+
+    document.getElementById("btn-send-msg").addEventListener("click", () => {
+      const text = document.getElementById("msg-input").value.trim();
+      send({ type: "command", payload: { action: "setMessage", text } });
+    });
+
+    document.getElementById("btn-clear-msg").addEventListener("click", () => {
+      document.getElementById("msg-input").value = "";
+      send({ type: "command", payload: { action: "setMessage", text: "" } });
+    });
+
+    // ── Presets ────────────────────────────────────────────────────────────────
+
+    document.getElementById("btn-save-preset").addEventListener("click", () => {
+      const nameInput = document.getElementById("preset-name");
+      const name = nameInput.value.trim() || "Untitled";
+      if (!latestState) return;
+      const { timer, display } = latestState;
+      send({ type: "preset", payload: { action: "save", preset: {
+        name,
+        mode:         timer.mode,
+        targetMs:     timer.targetMs,
+        endBehavior:  timer.endBehavior,
+        nextPresetId: timer.nextPresetId,
+        displayConfig: { ...display },
+      }}});
+      nameInput.value = "";
+    });
+
+    document.getElementById("preset-list").addEventListener("click", (e) => {
+      const loadBtn   = e.target.closest(".preset-load");
+      const deleteBtn = e.target.closest(".preset-delete");
+      if (loadBtn)   send({ type: "preset", payload: { action: "load",   preset: { id: loadBtn.dataset.id } } });
+      if (deleteBtn && confirm("Delete this preset?"))
+                     send({ type: "preset", payload: { action: "delete", preset: { id: deleteBtn.dataset.id } } });
+    });
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    function formatMs(ms, showSubseconds = false) {
+      const totalSec = Math.floor(ms / 1000);
+      const hours    = Math.floor(totalSec / 3600);
+      const minutes  = Math.floor((totalSec % 3600) / 60);
+      const seconds  = totalSec % 60;
+      const tenths   = Math.floor((ms % 1000) / 100);
+      const hh = String(hours).padStart(2, "0");
+      const mm = String(minutes).padStart(2, "0");
+      const ss = String(seconds).padStart(2, "0");
+      return showSubseconds ? `${hh}:${mm}:${ss}.${tenths}` : `${hh}:${mm}:${ss}`;
+    }
+
+    function escHtml(str) {
+      return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+                .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+    }
+
+    connect();
+  </script>
+</body>
+</html>

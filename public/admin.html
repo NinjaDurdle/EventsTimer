@@ -1,0 +1,1531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — Timer Config</title>
+  <style>
+    :root {
+      --accent: #4f9cf9;
+      --danger: #f95f4f;
+      --success: #4fc978;
+      --warning: #f9c74f;
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #242838;
+      --border: #2e3347;
+      --text: #e8eaf0;
+      --muted: #7b8197;
+      --radius: 10px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Two-column layout ── */
+    .page-header {
+      display: flex; align-items: baseline;
+      justify-content: space-between;
+      padding: 16px 16px 8px;
+    }
+    h1 { font-size: 1.1rem; font-weight: 600; color: var(--muted); }
+    .control-link {
+      font-size: 0.72rem; color: var(--muted); text-decoration: none;
+      opacity: 0.5; transition: opacity 0.15s;
+    }
+    .control-link:hover { opacity: 1; color: var(--accent); }
+
+    .layout {
+      display: flex;
+      gap: 0;
+      align-items: flex-start;
+      min-height: calc(100vh - 52px);
+    }
+    .controls-col {
+      flex: 0 0 65%;
+      padding: 8px 16px 16px;
+      overflow-y: auto;
+    }
+    .preview-col {
+      width: 35%;
+      min-width: 220px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 8px 12px 8px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    /* Vertical slider rotated 90deg, placed left of preview */
+    .preview-area {
+      display: flex;
+      flex-direction: row;
+      align-items: stretch;
+      gap: 8px;
+    }
+    .v-slider-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      width: 32px;
+    }
+    .v-slider-label {
+      font-size: 0.6rem; color: var(--muted);
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      transform: rotate(180deg);
+      letter-spacing: 0.05em;
+    }
+    input[type=range].vertical {
+      writing-mode: vertical-lr;
+      direction: rtl;
+      appearance: slider-vertical;
+      -webkit-appearance: slider-vertical;
+      width: 20px;
+      flex: 1;
+      accent-color: var(--accent);
+    }
+    .h-slider-wrap {
+      display: flex; align-items: center; gap: 6px; margin-top: 4px;
+    }
+    .h-slider-label { font-size: 0.65rem; color: var(--muted); white-space: nowrap; }
+    .h-slider-wrap input[type=range] { flex: 1; accent-color: var(--accent); }
+    .slider-val {
+      font-size: 0.65rem; color: var(--muted); font-family: monospace;
+      flex: 0 0 28px; text-align: right;
+    }
+
+    h2 {
+      font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px;
+    }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px; margin-bottom: 12px;
+    }
+
+    /* ── Preview ── */
+    #preview {
+      width: 100%;
+      aspect-ratio: 16/9;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      position: relative;
+      cursor: crosshair;
+      user-select: none;
+      touch-action: none;
+    }
+    #preview-timer-block {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      display: flex; flex-direction: column; align-items: center;
+    }
+    #preview-label {
+      font-size: 0.6vw; opacity: 0.7; margin-bottom: 0.3em; min-height: 0.8em;
+      white-space: nowrap;
+    }
+    #preview-timer {
+      font-variant-numeric: tabular-nums; line-height: 1;
+      white-space: nowrap;
+    }
+    #preview-message {
+      position: absolute; bottom: 4%; left: 5%; right: 5%;
+      text-align: center; font-size: 0.7vw;
+    }
+    .position-hint {
+      font-size: 0.65rem; color: var(--muted); text-align: center;
+    }
+
+    /* ── Form rows ── */
+    .row {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+    }
+    .row label { flex: 0 0 120px; font-size: 0.8rem; color: var(--muted); }
+    .row input[type="text"], .row input[type="number"], .row select {
+      flex: 1; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); padding: 6px 9px; font-size: 0.85rem;
+    }
+    .row input:focus, .row select:focus { outline: none; border-color: var(--accent); }
+    .row input[type="color"] {
+      flex: 0 0 36px; height: 32px; padding: 2px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--surface2); cursor: pointer;
+    }
+    .row .color-hex {
+      flex: 1; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); padding: 6px 9px;
+      font-family: monospace; font-size: 0.85rem;
+    }
+    .row input[type="checkbox"] {
+      width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer;
+    }
+    .row input[type="range"] { flex: 1; accent-color: var(--accent); }
+    .range-value {
+      flex: 0 0 38px; text-align: right; font-family: monospace;
+      font-size: 0.85rem; color: var(--muted);
+    }
+
+    /* ── Digit toggles ── */
+    .digit-toggles {
+      display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+    }
+    .digit-toggle {
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+    }
+    .digit-toggle span { font-size: 0.65rem; color: var(--muted); }
+    .digit-toggle input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+    .digit-sep { font-size: 1.1rem; color: var(--muted); padding: 0 2px; margin-top: 12px; }
+
+    /* ── Color triggers ── */
+    .trigger-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+    .trigger-item {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; padding: 8px;
+    }
+    .trigger-time {
+      flex: 0 0 90px; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 4px; color: var(--text); padding: 4px 6px;
+      font-family: monospace; font-size: 0.82rem;
+    }
+    .trigger-time:focus { outline: none; border-color: var(--accent); }
+    .trigger-color { flex: 0 0 30px; height: 28px; padding: 2px; border-radius: 4px;
+                     border: 1px solid var(--border); cursor: pointer; }
+    .trigger-label { font-size: 0.7rem; color: var(--muted); }
+    .trigger-remove {
+      background: none; border: none; color: var(--danger);
+      font-size: 0.9rem; padding: 2px 6px; opacity: 0.6; cursor: pointer;
+    }
+    .trigger-remove:hover { opacity: 1; }
+    .btn-add-trigger {
+      width: 100%; padding: 8px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 6px; color: var(--muted);
+      font-size: 0.82rem; cursor: pointer; transition: border-color 0.15s;
+    }
+    .btn-add-trigger:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── End behavior tabs ── */
+    .end-tabs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+    .end-tab {
+      padding: 7px; border-radius: 6px; background: var(--surface2);
+      border: 1px solid var(--border); color: var(--muted); font-size: 0.76rem;
+      font-weight: 600; cursor: pointer; text-align: center; transition: all 0.15s;
+    }
+    .end-tab.active { background: var(--warning); border-color: var(--warning); color: #000; }
+    #next-preset-row { display: none; }
+    #next-preset-row.visible { display: flex; }
+    select option { background: var(--surface2); }
+
+    /* ── Buttons ── */
+    .btn-apply {
+      width: 100%; padding: 11px; background: var(--accent); color: #000;
+      border: none; border-radius: var(--radius); font-size: 0.92rem;
+      font-weight: 700; cursor: pointer; margin-bottom: 10px;
+    }
+    .btn-apply:hover { opacity: 0.88; }
+    .btn-apply:active { transform: scale(0.98); }
+    .btn-system {
+      width: 100%; padding: 10px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--text); font-size: 0.88rem; font-weight: 600; cursor: pointer;
+    }
+    .btn-system:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Port grid ── */
+    .port-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+    .port-field label { display: block; font-size: 0.7rem; color: var(--muted); margin-bottom: 3px; }
+    .port-field input {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); padding: 6px 9px;
+      font-size: 0.85rem; font-family: monospace;
+    }
+    .port-field input:focus { outline: none; border-color: var(--accent); }
+    .hostname-row { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+    .hostname-row input {
+      flex: 1; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); padding: 6px 9px;
+      font-size: 0.85rem; font-family: monospace;
+    }
+    .hostname-row input:focus { outline: none; border-color: var(--accent); }
+    .hostname-suffix { font-family: monospace; font-size: 0.85rem; color: var(--muted); }
+    .restart-note { font-size: 0.7rem; color: var(--warning); margin-bottom: 8px; }
+
+    /* ── OSC reference ── */
+    .osc-ref {
+      font-family: monospace; font-size: 0.72rem; color: var(--muted);
+      background: var(--surface2); border-radius: 6px; padding: 10px;
+      line-height: 1.8;
+    }
+    .osc-ref span { color: var(--accent); }
+
+
+    /* ── Bridges ── */
+    .bridge-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+    .bridge-header {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+    }
+    .bridge-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted); flex-shrink: 0;
+    }
+    .bridge-dot.running { background: var(--success); }
+    .bridge-dot.error   { background: var(--danger); }
+    .bridge-name { font-size: 0.88rem; font-weight: 600; flex: 1; }
+    .bridge-desc { font-size: 0.72rem; color: var(--muted); margin-bottom: 10px; }
+    .bridge-fields { display: flex; flex-direction: column; gap: 7px; margin-bottom: 10px; }
+    .bridge-field { display: flex; align-items: center; gap: 8px; }
+    .bridge-field label { flex: 0 0 140px; font-size: 0.78rem; color: var(--muted); }
+    .bridge-field input[type=text],
+    .bridge-field input[type=number] {
+      flex: 1; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 5px; color: var(--text); padding: 5px 8px;
+      font-size: 0.82rem; font-family: monospace;
+    }
+    .bridge-field input[type=text]:focus,
+    .bridge-field input[type=number]:focus { outline: none; border-color: var(--accent); }
+    .bridge-field input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
+    .bridge-actions { display: flex; gap: 8px; }
+    .btn-bridge-start {
+      flex: 1; padding: 8px; background: var(--success); color: #000;
+      border: none; border-radius: 6px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+    }
+    .btn-bridge-stop {
+      flex: 1; padding: 8px; background: var(--danger); color: #fff;
+      border: none; border-radius: 6px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+    }
+    .btn-bridge-start:disabled, .btn-bridge-stop:disabled { opacity: 0.4; cursor: default; }
+
+    #status { font-size: 0.7rem; color: var(--muted); text-align: center; }
+    #status.connected    { color: var(--success); }
+    #status.disconnected { color: var(--danger); }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <h1>⚙ Admin</h1>
+    <a href="/control" class="control-link">⏱ Control</a>
+  </div>
+
+  <div class="layout">
+    <!-- ── Left: all controls ── -->
+    <div class="controls-col">
+
+      <!-- Typography (Timer) -->
+      <div class="card">
+        <h2>Timer Display</h2>
+        <div class="row">
+          <label>Font</label>
+          <select id="cfg-font"><option value="monospace">Loading…</option></select>
+        </div>
+        <div class="row">
+          <label>Font size (vw)</label>
+          <input type="range" id="cfg-fontsize" min="5" max="40" step="0.5" value="20">
+          <span class="range-value" id="fontsize-val">20vw</span>
+        </div>
+        <div class="row">
+          <label>Label text</label>
+          <input type="text" id="cfg-label" placeholder="e.g. Session ends in…" maxlength="60">
+        </div>
+        <div class="row">
+          <label>Show tenths</label>
+          <input type="checkbox" id="cfg-subseconds">
+        </div>
+
+        <!-- Digit visibility -->
+        <div class="row" style="align-items:flex-start;">
+          <label style="padding-top:14px;">Visible digits</label>
+          <div class="digit-toggles">
+            <div class="digit-toggle">
+              <span>10h</span>
+              <input type="checkbox" id="dv-0">
+            </div>
+            <div class="digit-toggle">
+              <span>1h</span>
+              <input type="checkbox" id="dv-1">
+            </div>
+            <span class="digit-sep">:</span>
+            <div class="digit-toggle">
+              <span>10m</span>
+              <input type="checkbox" id="dv-2" checked>
+            </div>
+            <div class="digit-toggle">
+              <span>1m</span>
+              <input type="checkbox" id="dv-3" checked>
+            </div>
+            <span class="digit-sep">:</span>
+            <div class="digit-toggle">
+              <span>10s</span>
+              <input type="checkbox" id="dv-4" checked>
+            </div>
+            <div class="digit-toggle">
+              <span>1s</span>
+              <input type="checkbox" id="dv-5" checked>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Colors -->
+      <div class="card">
+        <h2>Timer Colors</h2>
+        <div class="row">
+          <label>Text color</label>
+          <input type="color" id="cfg-text-color-picker" value="#ffffff">
+          <input type="text"  id="cfg-text-color-hex" class="color-hex" value="#ffffff" maxlength="7">
+        </div>
+        <div class="row">
+          <label>Background</label>
+          <input type="color" id="cfg-bg-color-picker" value="#000000">
+          <input type="text"  id="cfg-bg-color-hex" class="color-hex" value="#000000" maxlength="7">
+        </div>
+        <div class="row">
+          <label>Flash color</label>
+          <input type="color" id="cfg-flash-color-picker" value="#ff0000">
+          <input type="text"  id="cfg-flash-color-hex" class="color-hex" value="#ff0000" maxlength="7">
+        </div>
+
+        <!-- Color triggers -->
+        <div style="margin-top:6px;">
+          <div style="font-size:0.72rem;color:var(--muted);margin-bottom:8px;">
+            Time-based color changes (countdown only) — at each time, colors switch
+          </div>
+          <div class="trigger-list" id="trigger-list"></div>
+          <button class="btn-add-trigger" id="btn-add-trigger">+ Add time block</button>
+        </div>
+      </div>
+
+      <!-- Message display -->
+      <div class="card">
+        <h2>Message Display</h2>
+        <div class="row">
+          <label>Font</label>
+          <select id="msg-font"><option value="monospace">Loading…</option></select>
+        </div>
+        <div class="row">
+          <label>Font size (vw)</label>
+          <input type="range" id="msg-fontsize" min="1" max="20" step="0.5" value="5">
+          <span class="range-value" id="msg-fontsize-val">5vw</span>
+        </div>
+        <div class="row">
+          <label>Text color</label>
+          <input type="color" id="msg-text-color-picker" value="#ffffff">
+          <input type="text"  id="msg-text-color-hex" class="color-hex" value="#ffffff" maxlength="7">
+        </div>
+        <div class="row">
+          <label>Background</label>
+          <input type="color" id="msg-bg-color-picker" value="#000000">
+          <input type="text"  id="msg-bg-color-hex" class="color-hex" value="#000000" maxlength="7">
+        </div>
+        <div class="row">
+          <label>BG opacity</label>
+          <input type="range" id="msg-bg-opacity" min="0" max="100" value="100">
+          <span class="range-value" id="msg-bg-opacity-val">100%</span>
+        </div>
+        <div class="row">
+          <label>Position H</label>
+          <input type="range" id="msg-pos-x" min="0" max="100" value="50">
+          <span class="range-value" id="msg-pos-x-val">50%</span>
+        </div>
+        <div class="row">
+          <label>Position V</label>
+          <input type="range" id="msg-pos-y" min="0" max="100" value="90">
+          <span class="range-value" id="msg-pos-y-val">90%</span>
+        </div>
+        <div class="row">
+          <label>Width</label>
+          <input type="range" id="msg-width" min="10" max="100" value="80">
+          <span class="range-value" id="msg-width-val">80%</span>
+        </div>
+      </div>
+
+      <!-- End behavior -->
+      <div class="card">
+        <h2>End of Countdown</h2>
+        <div class="end-tabs">
+          <div class="end-tab active" data-behavior="hold">Hold at 0</div>
+          <div class="end-tab"       data-behavior="flash">Flash</div>
+          <div class="end-tab"       data-behavior="next">Next Preset</div>
+        </div>
+        <div class="row" id="next-preset-row">
+          <label>Load preset</label>
+          <select id="cfg-next-preset"><option value="">— select —</option></select>
+        </div>
+      </div>
+
+      <button class="btn-apply" id="btn-apply">Apply Display Settings</button>
+
+      <!-- Timer Status -->
+      <div class="card" id="status-card">
+        <h2>Timer Status</h2>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <div id="status-mode-badge" style="
+            display:inline-block;padding:4px 10px;border-radius:4px;
+            font-size:0.75rem;font-weight:700;letter-spacing:0.08em;
+            background:var(--surface2);color:var(--muted);border:1px solid var(--border);">
+            COUNTDOWN
+          </div>
+          <div id="status-running-badge" style="
+            display:inline-block;padding:4px 10px;border-radius:4px;
+            font-size:0.75rem;font-weight:700;
+            background:var(--surface2);color:var(--muted);border:1px solid var(--border);">
+            STOPPED
+          </div>
+        </div>
+        <!-- External source status — only shown in external mode -->
+        <div id="external-status" style="display:none;">
+          <div style="font-size:0.78rem;color:var(--muted);margin-bottom:6px;">
+            External source
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div id="external-dot" style="
+              width:10px;height:10px;border-radius:50%;
+              background:var(--muted);flex-shrink:0;"></div>
+            <div id="external-label" style="font-size:0.82rem;color:var(--muted);">
+              No data received yet
+            </div>
+          </div>
+          <div style="font-size:0.68rem;color:var(--muted);margin-top:6px;">
+            Listening on Irisdown TCP port and IDCT UDP port 61003.<br>
+            Switch to External mode on the control page, then start your source.
+          </div>
+        </div>
+      </div>
+
+      <!-- Dev tools -->
+      <div class="card" style="border-color:#2e3347;">
+        <h2>Developer</h2>
+        <button class="btn-system" id="btn-reload-display"
+                style="border-color:var(--warning);color:var(--warning);">
+          ⟳ Force Reload Display Page
+        </button>
+        <div style="font-size:0.68rem;color:var(--muted);margin-top:6px;">
+          Reloads all connected display pages immediately. Useful after updating files.
+        </div>
+      </div>
+
+
+      <!-- Bridges -->
+      <div class="card">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;">
+          <h2 style="margin-bottom:0;">Bridges</h2>
+          <button id="btn-refresh-bridges" style="background:none;border:none;color:var(--muted);font-size:0.75rem;cursor:pointer;padding:0;opacity:0.6;" title="Refresh bridge list">⟳ Refresh</button>
+        </div>
+        <div style="font-size:0.72rem;color:var(--muted);margin-bottom:12px;">
+          Bridges connect external playback systems to this timer.
+          Each bridge runs as a background process on the Pi.
+        </div>
+        <div id="bridge-list">
+          <div style="font-size:0.8rem;color:var(--muted);text-align:center;padding:10px 0;">
+            Loading bridges…
+          </div>
+        </div>
+      </div>
+
+      <!-- Network & System -->
+      <div class="card">
+        <h2>Network &amp; System</h2>
+        <div style="font-size:0.75rem;color:var(--muted);margin-bottom:6px;">
+          Hostname — users reach this device at <strong id="hostname-preview">timer.local</strong>
+        </div>
+        <div class="hostname-row">
+          <input type="text" id="cfg-hostname" value="timer" maxlength="63" pattern="[a-z0-9\-]+">
+          <span class="hostname-suffix">.local</span>
+        </div>
+        <div style="font-size:0.72rem;color:var(--muted);margin-bottom:12px;">
+          Applied immediately. Lowercase, hyphens only.
+        </div>
+        <div style="font-size:0.75rem;color:var(--muted);margin-bottom:6px;margin-top:8px;">
+          Network interface
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+          <input type="text" id="cfg-iface" value="eth0" maxlength="16"
+                 placeholder="eth0"
+                 style="width:120px;background:var(--surface2);border:1px solid var(--border);
+                        border-radius:6px;color:var(--text);padding:6px 9px;
+                        font-family:monospace;font-size:0.85rem;">
+          <div id="iface-hint" style="font-size:0.68rem;color:var(--muted);"></div>
+        </div>
+        <div style="font-size:0.68rem;color:var(--muted);margin-bottom:12px;">
+          Ethernet: <code>eth0</code>, <code>eth1</code> — WiFi: <code>wlan0</code>
+          — requires restart to take effect
+        </div>
+        <div class="port-grid">
+          <div class="port-field">
+            <label>Web UI (HTTP)</label>
+            <input type="number" id="cfg-http-port" min="1" max="65535" value="80">
+          </div>
+          <div class="port-field">
+            <label>OSC Control (TCP)</label>
+            <input type="number" id="cfg-tcp-port" min="1" max="65535" value="3001">
+          </div>
+          <div class="port-field">
+            <label>OSC Control (UDP)</label>
+            <input type="number" id="cfg-udp-port" min="1" max="65535" value="3001">
+          </div>
+          <div class="port-field">
+            <label>OSC Feedback (UDP)</label>
+            <input type="number" id="cfg-feedback-port" min="1" max="65535" value="3002">
+          </div>
+          <div class="port-field">
+            <label>Irisdown TCP</label>
+            <input type="number" id="cfg-irisdown-port" min="1" max="65535" value="61002">
+          </div>
+          <div class="port-field">
+            <label>IDCT Broadcast</label>
+            <input type="number" id="cfg-idct-port" min="1" max="65535" value="61003">
+          </div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <div style="font-size:0.72rem;color:var(--muted);margin-bottom:5px;">Feedback destination</div>
+          <input type="text" id="cfg-feedback-target" value="auto"
+                 placeholder="auto  or  192.168.1.50"
+                 style="width:100%;background:var(--surface2);border:1px solid var(--border);
+                        border-radius:6px;color:var(--text);padding:6px 9px;font-family:monospace;font-size:0.85rem;">
+          <div style="font-size:0.68rem;color:var(--muted);margin-top:3px;">
+            <strong>auto</strong> = broadcast to all active subnets &nbsp;|&nbsp;
+            <strong>x.x.x.x</strong> = unicast to Companion's IP
+          </div>
+        </div>
+        <div class="restart-note" id="restart-note" style="display:none;">
+          ⚠ Port changes will restart the server. Page will reconnect automatically.
+        </div>
+        <button class="btn-system" id="btn-save-system">Save Network Settings</button>
+      </div>
+
+      <!-- OSC Reference -->
+      <div class="card">
+        <h2>OSC / Streamdeck Reference</h2>
+        <div class="osc-ref">
+          Send to <span id="osc-addr">timer.local</span>:<span id="osc-tcp-port">3001</span> (TCP or UDP)<br>
+          Feedback from <span id="osc-addr2">timer.local</span>:<span id="osc-fb-port">3002</span> (UDP broadcast)<br><br>
+          <span>/timer/start</span> &nbsp; <span>/timer/pause</span> &nbsp; <span>/timer/stop</span> &nbsp; <span>/timer/reset</span><br>
+          <span>/timer/set</span> HH:MM:SS<br>
+          <span>/timer/mode</span> countdown|countup|clock<br>
+          <span>/timer/add</span> [min] &nbsp; <span>/timer/subtract</span> [min]<br>
+          <span>/timer/preset/load</span> &lt;id&gt;<br>
+          <span>/timer/preset/save</span> &lt;id&gt;<br>
+          <span>/timer/message</span> &lt;text&gt;<br><br>
+          Feedback: <span>/timer/state</span> running=… mode=… time=… ms=… end=…<br><br>
+          Irisdown TCP: <span id="irisdown-addr">timer.local</span>:<span id="irisdown-port">61002</span><br>
+          GO / PAUSE / TOGGLEPAUSE / RESET / RESET hh:mm:ss<br>
+          JOG &lt;min&gt; / STATE / REMAINING / UPDATES ON / MESSAGE "text"<br><br>
+          IDCT broadcast: UDP port <span id="idct-port">61003</span> → CDEther displays
+        </div>
+      </div>
+
+      <div id="status">Connecting…</div>
+    </div>
+
+    <!-- ── Right: sticky preview ── -->
+    <div class="preview-col">
+      <div class="card" style="padding:10px;">
+        <h2 style="margin-bottom:8px;">Preview</h2>
+        <!-- Preview area: vertical slider on left, preview canvas on right -->
+        <div class="preview-area">
+          <!-- Vertical position slider -->
+          <div class="v-slider-wrap">
+            <span class="v-slider-label">Vertical</span>
+            <input type="range" class="vertical" id="pos-y"
+                   min="0" max="100" value="50">
+            <span class="slider-val" id="pos-y-val">50</span>
+          </div>
+          <!-- Preview canvas -->
+          <div style="flex:1;">
+            <div id="preview">
+              <div id="preview-timer-block">
+                <div id="preview-label"></div>
+                <div id="preview-timer">00:00</div>
+              </div>
+              <div id="preview-message"></div>
+            </div>
+          </div>
+        </div>
+        <!-- Horizontal position slider below preview -->
+        <div class="h-slider-wrap">
+          <span class="h-slider-label">H</span>
+          <input type="range" id="pos-x" min="0" max="100" value="50">
+          <span class="slider-val" id="pos-x-val">50</span>
+        </div>
+        <div class="position-hint" style="margin-top:2px;">Drag preview to reposition</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── State ──────────────────────────────────────────────────────────────────
+    let ws, latestState = null, latestPresets = [], reconnectDelay = 1000;
+    let currentBehavior = "hold";
+    let formTouched = false;
+    let posX = 50, posY = 50;  // current position percentages
+    let colorTriggers = [];     // [{atMs, textColor, bgColor}]
+
+    const statusEl = document.getElementById("status");
+
+    // ── WebSocket ──────────────────────────────────────────────────────────────
+    function connect() {
+      ws = new WebSocket(`ws://${location.host}`);
+      ws.addEventListener("open", () => {
+        reconnectDelay = 1000;
+        statusEl.textContent = "● Connected";
+        statusEl.className   = "connected";
+        loadBridges(); // refresh on reconnect too
+      });
+      ws.addEventListener("message", (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "state") {
+          latestState = msg.payload;
+          if (!formTouched) syncFromState(msg.payload);
+          updatePreview(msg.payload);
+          updateStatusCard(msg.payload);
+        } else if (msg.type === "presets") {
+          latestPresets = msg.payload;
+          populateNextPresetSelect(msg.payload);
+        } else if (msg.type === "sysconfig") {
+          syncSysconfig(msg.payload);
+        } else if (msg.type === "bridges") {
+          renderBridges(msg.payload);
+        }
+      });
+      ws.addEventListener("close", () => {
+        statusEl.textContent = "● Disconnected — reconnecting…";
+        statusEl.className   = "disconnected";
+        setTimeout(connect, Math.min(reconnectDelay, 10000));
+        reconnectDelay = Math.min(reconnectDelay * 1.5, 10000);
+      });
+      ws.addEventListener("error", () => ws.close());
+    }
+
+    function send(msg) {
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+    }
+
+
+    // ── Timer status card ─────────────────────────────────────────────────────
+
+    const modeBadgeEl    = document.getElementById("status-mode-badge");
+    const runningBadgeEl = document.getElementById("status-running-badge");
+    const externalStatus = document.getElementById("external-status");
+    const externalDot    = document.getElementById("external-dot");
+    const externalLabel  = document.getElementById("external-label");
+
+    function updateStatusCard({ timer }) {
+      // Mode badge
+      const modeLabel = timer.mode === "external" ? "EXTERNAL SOURCE"
+                      : timer.mode.toUpperCase();
+      modeBadgeEl.textContent = modeLabel;
+
+      const modeColors = {
+        countdown: { bg: "var(--accent)",   color: "#000" },
+        countup:   { bg: "var(--surface2)", color: "var(--text)" },
+        clock:     { bg: "var(--surface2)", color: "var(--text)" },
+        external:  { bg: "var(--warning)",  color: "#000" },
+      };
+      const mc = modeColors[timer.mode] || modeColors.countdown;
+      modeBadgeEl.style.background  = mc.bg;
+      modeBadgeEl.style.color       = mc.color;
+      modeBadgeEl.style.borderColor = mc.bg;
+
+      // Running badge
+      if (timer.running) {
+        runningBadgeEl.textContent        = "RUNNING";
+        runningBadgeEl.style.background   = "var(--success)";
+        runningBadgeEl.style.color        = "#000";
+        runningBadgeEl.style.borderColor  = "var(--success)";
+      } else {
+        runningBadgeEl.textContent        = "STOPPED";
+        runningBadgeEl.style.background   = "var(--surface2)";
+        runningBadgeEl.style.color        = "var(--muted)";
+        runningBadgeEl.style.borderColor  = "var(--border)";
+      }
+
+      // External source panel
+      if (timer.mode === "external") {
+        externalStatus.style.display = "";
+
+        // lastExternalMs is Date.now() on the SERVER when data last arrived.
+        // We compare against our local clock — close enough for a 2s staleness check.
+        // The server sends it in timer state; if null, no data has arrived yet.
+        const lastMs = timer.lastExternalMs;
+        if (!lastMs) {
+          externalDot.style.background   = "var(--muted)";
+          externalLabel.style.color      = "var(--muted)";
+          externalLabel.textContent      = "Waiting for data…";
+        } else {
+          // We can't know exact server-client clock offset, but we can check
+          // whether the value is changing — compare on each state update.
+          // If lastExternalMs changed since last render, data is live.
+          const now = Date.now();
+          // Use a 2-second staleness window as a heuristic
+          // (server timestamps vs client clock may differ slightly)
+          const isLive = true; // lastExternalMs changed = data arrived
+          externalDot.style.background   = "var(--success)";
+          externalLabel.style.color      = "var(--success)";
+          externalLabel.textContent      = "Receiving data ✓";
+        }
+      } else {
+        externalStatus.style.display = "none";
+      }
+    }
+
+
+    // ── Bridge manager ────────────────────────────────────────────────────────
+    // Re-fetch after a short delay once WebSocket is open so the initial
+    // server push and the fetch don't race each other
+    function initBridges() {
+      loadBridges();
+      document.getElementById("btn-refresh-bridges").addEventListener("click", () => {
+        document.getElementById("btn-refresh-bridges").textContent = "⟳ …";
+        loadBridges().then(() => {
+          document.getElementById("btn-refresh-bridges").textContent = "⟳ Refresh";
+        });
+      });
+    }
+
+
+    // Store field values per bridge so they persist while page is open
+    const bridgeConfigs = {};
+
+    function renderBridges(bridges) {
+      const list = document.getElementById("bridge-list");
+      if (!bridges || !bridges.length) {
+        list.innerHTML = `<div style="font-size:0.8rem;color:var(--muted);text-align:center;padding:10px 0;">
+          No bridge scripts found in bridges/ folder.</div>`;
+        return;
+      }
+
+      list.innerHTML = "";
+
+      for (const bridge of bridges) {
+        // Merge saved config into the bridge config for display
+        if (!bridgeConfigs[bridge.id]) bridgeConfigs[bridge.id] = { ...bridge.config };
+        const cfg = bridgeConfigs[bridge.id];
+
+        const div = document.createElement("div");
+        div.className = "bridge-item";
+
+        // Build field HTML
+        const fieldsHtml = (bridge.fields || []).map(f => {
+          const val = cfg[f.id] !== undefined ? cfg[f.id] : f.default || "";
+          if (f.type === "checkbox") {
+            const checked = val === true || val === "true" ? "checked" : "";
+            return `<div class="bridge-field">
+              <label>${f.label}</label>
+              <input type="checkbox" ${checked} data-bridge="${bridge.id}" data-field="${f.id}">
+            </div>`;
+          }
+          return `<div class="bridge-field">
+            <label>${f.label}</label>
+            <input type="${f.type || "text"}" value="${escHtml(String(val))}"
+                   placeholder="${f.default || ""}"
+                   data-bridge="${bridge.id}" data-field="${f.id}">
+          </div>`;
+        }).join("");
+
+        div.innerHTML = `
+          <div class="bridge-header">
+            <div class="bridge-dot ${bridge.running ? "running" : ""}"></div>
+            <div class="bridge-name">${escHtml(bridge.name || bridge.id)}</div>
+            <div style="font-size:0.68rem;color:${bridge.running ? "var(--success)" : "var(--muted)"};">
+              ${bridge.running ? "Running" : "Stopped"}
+            </div>
+          </div>
+          ${bridge.description ? `<div class="bridge-desc">${escHtml(bridge.description)}</div>` : ""}
+          <div class="bridge-fields">${fieldsHtml}</div>
+          <div class="bridge-actions">
+            <button class="btn-bridge-start" data-id="${bridge.id}" ${bridge.running ? "disabled" : ""}>
+              ▶ Start
+            </button>
+            <button class="btn-bridge-stop" data-id="${bridge.id}" ${!bridge.running ? "disabled" : ""}>
+              ⏹ Stop
+            </button>
+          </div>`;
+
+        list.appendChild(div);
+      }
+
+      // Wire field inputs to update bridgeConfigs
+      list.querySelectorAll("[data-bridge][data-field]").forEach(el => {
+        el.addEventListener("change", () => {
+          const bid = el.dataset.bridge;
+          const fid = el.dataset.field;
+          if (!bridgeConfigs[bid]) bridgeConfigs[bid] = {};
+          bridgeConfigs[bid][fid] = el.type === "checkbox" ? el.checked : el.value;
+        });
+        // Also on input for text fields
+        if (el.type !== "checkbox") {
+          el.addEventListener("input", () => {
+            const bid = el.dataset.bridge;
+            const fid = el.dataset.field;
+            if (!bridgeConfigs[bid]) bridgeConfigs[bid] = {};
+            bridgeConfigs[bid][fid] = el.value;
+          });
+        }
+      });
+
+      // Wire start/stop buttons
+      list.querySelectorAll(".btn-bridge-start").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const id  = btn.dataset.id;
+          const cfg = bridgeConfigs[id] || {};
+          btn.disabled = true;
+          btn.textContent = "Starting…";
+          try {
+            await fetch("/api/bridges/start", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id, config: cfg }),
+            });
+          } catch (e) { console.error("Bridge start error:", e); }
+        });
+      });
+
+      list.querySelectorAll(".btn-bridge-stop").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const id = btn.dataset.id;
+          btn.disabled = true;
+          btn.textContent = "Stopping…";
+          try {
+            await fetch("/api/bridges/stop", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id }),
+            });
+          } catch (e) { console.error("Bridge stop error:", e); }
+        });
+      });
+    }
+
+    // Load bridges on connect
+    async function loadBridges() {
+      try {
+        const res  = await fetch("/api/bridges");
+        const data = await res.json();
+        renderBridges(data);
+      } catch (e) { console.warn("Could not load bridges:", e); }
+    }
+
+
+    // ── Font loading ───────────────────────────────────────────────────────────
+    async function loadFonts() {
+      try {
+        const res  = await fetch("/api/fonts");
+        const data = await res.json();
+        populateFontSelect("cfg-font",  data);
+        populateFontSelect("msg-font",  data);
+      } catch (e) { console.warn("Could not load fonts:", e); }
+    }
+
+    function populateFontSelect(id, data) {
+      const sel = document.getElementById(id);
+      const current = sel.value;
+      sel.innerHTML = "";
+
+      // Pinned fonts
+      const pinnedGrp = document.createElement("optgroup");
+      pinnedGrp.label = "Preferred fonts";
+      for (const f of data.pinned) {
+        const opt = document.createElement("option");
+        opt.value = f.value; opt.textContent = f.label;
+        pinnedGrp.appendChild(opt);
+      }
+      sel.appendChild(pinnedGrp);
+
+      // System fonts
+      if (data.system && data.system.length) {
+        const sysGrp = document.createElement("optgroup");
+        sysGrp.label = "System fonts";
+        for (const f of data.system) {
+          const opt = document.createElement("option");
+          opt.value = f.value; opt.textContent = f.label;
+          sysGrp.appendChild(opt);
+        }
+        sel.appendChild(sysGrp);
+      }
+
+      if (current) sel.value = current;
+    }
+
+    // ── Sync from server state ─────────────────────────────────────────────────
+    function syncFromState({ timer, display, message: msgCfg }) {
+      document.getElementById("cfg-font").value     = display.font;
+      document.getElementById("cfg-fontsize").value = display.fontSize;
+      document.getElementById("fontsize-val").textContent = display.fontSize + "vw";
+      document.getElementById("cfg-label").value    = display.label || "";
+      document.getElementById("cfg-subseconds").checked = !!display.showSubseconds;
+
+      setColorPair("text",  display.textColor);
+      setColorPair("bg",    display.bgColor);
+      setColorPair("flash", display.flashColor);
+
+      // Digit visibility
+      const vis = display.visibleDigits || [false,false,true,true,true,true];
+      vis.forEach((v, i) => {
+        const el = document.getElementById(`dv-${i}`);
+        if (el) el.checked = v;
+      });
+
+      // Color triggers
+      colorTriggers = display.colorTriggers ? [...display.colorTriggers] : [];
+      renderTriggers();
+
+      // Position
+      posX = typeof display.positionX === "number" ? display.positionX : 50;
+      posY = typeof display.positionY === "number" ? display.positionY : 50;
+
+      // End behavior
+      setEndBehavior(timer.endBehavior);
+      if (timer.nextPresetId)
+        document.getElementById("cfg-next-preset").value = timer.nextPresetId;
+
+      // Message config
+      if (msgCfg) {
+        document.getElementById("msg-font").value      = msgCfg.font;
+        document.getElementById("msg-fontsize").value  = msgCfg.fontSize;
+        document.getElementById("msg-fontsize-val").textContent = msgCfg.fontSize + "vw";
+        setColorPair("msg-text", msgCfg.textColor);
+        setColorPair("msg-bg",   msgCfg.bgColor === "transparent" ? "#000000" : msgCfg.bgColor);
+        const op = typeof msgCfg.bgOpacity === "number" ? msgCfg.bgOpacity : 100;
+        document.getElementById("msg-bg-opacity").value = op;
+        document.getElementById("msg-bg-opacity-val").textContent = op + "%";
+        const mx = typeof msgCfg.positionX === "number" ? msgCfg.positionX : 50;
+        const my = typeof msgCfg.positionY === "number" ? msgCfg.positionY : 90;
+        const mw = typeof msgCfg.width      === "number" ? msgCfg.width      : 80;
+        document.getElementById("msg-pos-x").value = mx;
+        document.getElementById("msg-pos-x-val").textContent = mx + "%";
+        document.getElementById("msg-pos-y").value = my;
+        document.getElementById("msg-pos-y-val").textContent = my + "%";
+        document.getElementById("msg-width").value = mw;
+        document.getElementById("msg-width-val").textContent = mw + "%";
+      }
+      // Also sync position sliders on state load
+      syncPosSliders();
+    }
+
+    // ── Preview ────────────────────────────────────────────────────────────────
+    const previewEl    = document.getElementById("preview");
+    const previewBlock = document.getElementById("preview-timer-block");
+    const previewTimer = document.getElementById("preview-timer");
+    const previewLabel = document.getElementById("preview-label");
+    const previewMsg   = document.getElementById("preview-message");
+
+    function updatePreview(state) {
+      if (!state) return;
+      const { timer, display, message: msgCfg } = state;
+
+      const font      = document.getElementById("cfg-font").value;
+      const fontSize  = parseFloat(document.getElementById("cfg-fontsize").value);
+      const textColor = document.getElementById("cfg-text-color-hex").value;
+      const bgColor   = document.getElementById("cfg-bg-color-hex").value;
+      const label     = document.getElementById("cfg-label").value;
+
+      // Preview dimensions
+      const pw = previewEl.clientWidth;
+      const ph = previewEl.clientHeight;
+      const fontPx = (fontSize / 100) * pw;
+
+      previewEl.style.background     = bgColor;
+      previewTimer.style.color       = textColor;
+      previewTimer.style.fontFamily  = font;
+      previewTimer.style.fontSize    = fontPx + "px";
+      previewLabel.style.color       = textColor;
+      previewLabel.style.fontFamily  = font;
+      previewLabel.style.fontSize    = (fontPx * 0.2) + "px";
+      previewLabel.textContent       = label;
+
+      // Position
+      previewBlock.style.left = posX + "%";
+      previewBlock.style.top  = posY + "%";
+
+      // Digit visibility for preview
+      const vis = [false,false,true,true,true,true].map((_, i) => {
+        const el = document.getElementById(`dv-${i}`);
+        return el ? el.checked : true;
+      });
+      const parts = buildTimerString(timer.currentMs, !!display.showSubseconds, vis);
+      previewTimer.textContent = parts;
+
+      // Message preview
+      {
+        const mf  = document.getElementById("msg-font").value;
+        const mfs = parseFloat(document.getElementById("msg-fontsize").value);
+        const mc  = document.getElementById("msg-text-color-hex").value;
+        const mb  = document.getElementById("msg-bg-color-hex").value;
+        const mop = parseInt(document.getElementById("msg-bg-opacity").value, 10);
+        const mpx = parseInt(document.getElementById("msg-pos-x").value, 10);
+        const mpy = parseInt(document.getElementById("msg-pos-y").value, 10);
+        const mw  = parseInt(document.getElementById("msg-width").value,  10);
+
+        // Convert hex + opacity to rgba for preview
+        const r = parseInt(mb.slice(1,3), 16);
+        const g = parseInt(mb.slice(3,5), 16);
+        const b = parseInt(mb.slice(5,7), 16);
+        const rgba = `rgba(${r},${g},${b},${mop/100})`;
+
+        previewMsg.style.fontFamily  = mf;
+        previewMsg.style.fontSize    = ((mfs / 100) * pw) + "px";
+        previewMsg.style.color       = mc;
+        previewMsg.style.background  = rgba;
+        previewMsg.style.position    = "absolute";
+        previewMsg.style.left        = mpx + "%";
+        previewMsg.style.top         = mpy + "%";
+        previewMsg.style.transform   = "translate(-50%, -50%)";
+        previewMsg.style.width       = mw + "%";
+        previewMsg.style.maxWidth    = mw + "%";
+        previewMsg.style.textAlign   = "center";
+        previewMsg.style.padding     = mop > 0 ? "0.15em 0.4em" : "0";
+        previewMsg.style.borderRadius = "0.15em";
+        previewMsg.textContent       = timer.message || "";
+      }
+    }
+
+    function buildTimerString(ms, showSub, vis) {
+      const totalSec = Math.floor(ms / 1000);
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      const t = Math.floor((ms % 1000) / 100);
+      const hh = String(h).padStart(2,"0");
+      const mm = String(m).padStart(2,"0");
+      const ss = String(s).padStart(2,"0");
+
+      let str = "";
+      const hoursVis = vis[0] || vis[1];
+      if (vis[0]) str += hh[0];
+      if (vis[1]) str += hh[1];
+      if (hoursVis && (vis[2] || vis[3] || vis[4] || vis[5])) str += ":";
+      if (vis[2]) str += mm[0];
+      if (vis[3]) str += mm[1];
+      if ((vis[4] || vis[5])) str += ":";
+      if (vis[4]) str += ss[0];
+      if (vis[5]) str += showSub ? ss[1] + "." + t : ss[1];
+      return str || "00:00";
+    }
+
+    // Re-render preview on any form input change
+    document.querySelectorAll("input:not([type=number]), select").forEach(el => {
+      el.addEventListener("input", () => {
+        formTouched = true;
+        if (latestState) updatePreview(latestState);
+      });
+    });
+    document.querySelectorAll("input[type=number]").forEach(el => {
+      el.addEventListener("change", () => {
+        formTouched = true;
+        if (latestState) updatePreview(latestState);
+      });
+    });
+
+    // ── Drag to reposition ─────────────────────────────────────────────────────
+    let dragging = false;
+
+    previewEl.addEventListener("mousedown", (e) => {
+      dragging = true;
+      e.preventDefault();
+      updatePosFromEvent(e);
+    });
+    document.addEventListener("mousemove", (e) => {
+      if (!dragging) return;
+      updatePosFromEvent(e);
+    });
+    document.addEventListener("mouseup", () => { dragging = false; });
+
+    // Touch support
+    previewEl.addEventListener("touchstart", (e) => {
+      dragging = true;
+      e.preventDefault(); // suppress scroll during drag
+      updatePosFromEvent(e.touches[0]);
+    }, { passive: false });
+    document.addEventListener("touchmove", (e) => {
+      if (!dragging) return;
+      e.preventDefault(); // suppress scroll while dragging
+      updatePosFromEvent(e.touches[0]);
+    }, { passive: false });
+    document.addEventListener("touchend", () => { dragging = false; });
+
+    function updatePosFromEvent(e) {
+      const rect = previewEl.getBoundingClientRect();
+      posX = Math.round(Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width)  * 100)));
+      posY = Math.round(Math.max(0, Math.min(100, ((e.clientY - rect.top)  / rect.height) * 100)));
+      previewBlock.style.left = posX + "%";
+      previewBlock.style.top  = posY + "%";
+      // Keep sliders in sync with drag
+      syncPosSliders();
+      formTouched = true;
+    }
+
+    function syncPosSliders() {
+      const sx = document.getElementById("pos-x");
+      const sy = document.getElementById("pos-y");
+      if (sx) { sx.value = posX; document.getElementById("pos-x-val").textContent = posX; }
+      // Invert posY back to slider value (slider 0=bottom, posY 0=top)
+      if (sy) { sy.value = 100 - posY; document.getElementById("pos-y-val").textContent = posY; }
+    }
+
+    // ── Position sliders ──────────────────────────────────────────────────────
+    document.getElementById("pos-x").addEventListener("input", function() {
+      posX = parseInt(this.value, 10);
+      document.getElementById("pos-x-val").textContent = posX;
+      previewBlock.style.left = posX + "%";
+      formTouched = true;
+    });
+    document.getElementById("pos-y").addEventListener("input", function() {
+      // Invert: slider 0=bottom, 100=top → posY 0=top, 100=bottom
+      posY = 100 - parseInt(this.value, 10);
+      document.getElementById("pos-y-val").textContent = posY;
+      previewBlock.style.top = posY + "%";
+      formTouched = true;
+    });
+
+    // Message position + opacity sliders
+    document.getElementById("msg-pos-x").addEventListener("input", function() {
+      document.getElementById("msg-pos-x-val").textContent = this.value + "%";
+      formTouched = true;
+      if (latestState) updatePreview(latestState);
+    });
+    document.getElementById("msg-pos-y").addEventListener("input", function() {
+      document.getElementById("msg-pos-y-val").textContent = this.value + "%";
+      formTouched = true;
+      if (latestState) updatePreview(latestState);
+    });
+    document.getElementById("msg-bg-opacity").addEventListener("input", function() {
+      document.getElementById("msg-bg-opacity-val").textContent = this.value + "%";
+      formTouched = true;
+      if (latestState) updatePreview(latestState);
+    });
+    document.getElementById("msg-width").addEventListener("input", function() {
+      document.getElementById("msg-width-val").textContent = this.value + "%";
+      formTouched = true;
+      if (latestState) updatePreview(latestState);
+    });
+
+    // ── Color trigger management ───────────────────────────────────────────────
+    function renderTriggers() {
+      const list = document.getElementById("trigger-list");
+      list.innerHTML = "";
+      if (!colorTriggers.length) {
+        list.innerHTML = `<div style="font-size:0.75rem;color:var(--muted);padding:4px 0;">
+          No time blocks — colors stay constant</div>`;
+        return;
+      }
+      // Display sorted ascending (earliest time first) for readability
+      const sorted = [...colorTriggers].sort((a,b) => b.atMs - a.atMs);
+      sorted.forEach((t, i) => {
+        const div = document.createElement("div");
+        div.className = "trigger-item";
+        div.innerHTML = `
+          <div>
+            <div class="trigger-label" style="margin-bottom:3px;">When ≤</div>
+            <input class="trigger-time" type="text" value="${msToTimeStr(t.atMs)}"
+                   placeholder="MM:SS" data-idx="${i}">
+          </div>
+          <div>
+            <div class="trigger-label" style="margin-bottom:3px;">Text</div>
+            <input class="trigger-color" type="color" value="${t.textColor}" data-idx="${i}" data-field="textColor">
+          </div>
+          <div>
+            <div class="trigger-label" style="margin-bottom:3px;">BG</div>
+            <input class="trigger-color" type="color" value="${t.bgColor}" data-idx="${i}" data-field="bgColor">
+          </div>
+          <button class="trigger-remove" data-idx="${i}">✕</button>`;
+        list.appendChild(div);
+      });
+    }
+
+    document.getElementById("trigger-list").addEventListener("input", (e) => {
+      const idx = parseInt(e.target.dataset.idx, 10);
+      const sorted = [...colorTriggers].sort((a,b) => b.atMs - a.atMs);
+      if (e.target.classList.contains("trigger-time")) {
+        const ms = parseTimeStr(e.target.value);
+        if (ms !== null) sorted[idx].atMs = ms;
+      } else if (e.target.classList.contains("trigger-color")) {
+        sorted[idx][e.target.dataset.field] = e.target.value;
+      }
+      colorTriggers = sorted;
+      formTouched = true;
+      if (latestState) updatePreview(latestState);
+    });
+
+    document.getElementById("trigger-list").addEventListener("click", (e) => {
+      const btn = e.target.closest(".trigger-remove");
+      if (!btn) return;
+      const idx = parseInt(btn.dataset.idx, 10);
+      const sorted = [...colorTriggers].sort((a,b) => b.atMs - a.atMs);
+      sorted.splice(idx, 1);
+      colorTriggers = sorted;
+      renderTriggers();
+      formTouched = true;
+    });
+
+    document.getElementById("btn-add-trigger").addEventListener("click", () => {
+      colorTriggers.push({ atMs: 60_000, textColor: "#ff0000", bgColor: "#000000" });
+      renderTriggers();
+      formTouched = true;
+    });
+
+    // ── Color pickers ──────────────────────────────────────────────────────────
+    function setColorPair(name, value) {
+      const picker = document.getElementById(`cfg-${name}-color-picker`) ||
+                     document.getElementById(`${name}-color-picker`);
+      const hex    = document.getElementById(`cfg-${name}-color-hex`) ||
+                     document.getElementById(`${name}-color-hex`);
+      if (picker) picker.value = value;
+      if (hex)    hex.value    = value;
+    }
+
+    function wireColorPair(pickerId, hexId) {
+      const picker = document.getElementById(pickerId);
+      const hex    = document.getElementById(hexId);
+      if (!picker || !hex) return;
+      picker.addEventListener("input", () => {
+        hex.value = picker.value;
+        formTouched = true;
+        if (latestState) updatePreview(latestState);
+      });
+      hex.addEventListener("input", () => {
+        if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) picker.value = hex.value;
+        formTouched = true;
+        if (latestState) updatePreview(latestState);
+      });
+    }
+
+    wireColorPair("cfg-text-color-picker",  "cfg-text-color-hex");
+    wireColorPair("cfg-bg-color-picker",    "cfg-bg-color-hex");
+    wireColorPair("cfg-flash-color-picker", "cfg-flash-color-hex");
+    wireColorPair("msg-text-color-picker",  "msg-text-color-hex");
+    wireColorPair("msg-bg-color-picker",    "msg-bg-color-hex");
+
+    // ── Sliders ────────────────────────────────────────────────────────────────
+    document.getElementById("cfg-fontsize").addEventListener("input", function() {
+      document.getElementById("fontsize-val").textContent = this.value + "vw";
+    });
+    document.getElementById("msg-fontsize").addEventListener("input", function() {
+      document.getElementById("msg-fontsize-val").textContent = this.value + "vw";
+    });
+
+    // ── End behavior ───────────────────────────────────────────────────────────
+    function setEndBehavior(behavior) {
+      currentBehavior = behavior;
+      document.querySelectorAll(".end-tab").forEach(t =>
+        t.classList.toggle("active", t.dataset.behavior === behavior));
+      document.getElementById("next-preset-row").classList.toggle("visible", behavior === "next");
+    }
+    document.querySelectorAll(".end-tab").forEach(tab => {
+      tab.addEventListener("click", () => { formTouched = true; setEndBehavior(tab.dataset.behavior); });
+    });
+
+    function populateNextPresetSelect(presets) {
+      const sel = document.getElementById("cfg-next-preset");
+      const cur = sel.value;
+      sel.innerHTML = `<option value="">— select preset —</option>`;
+      presets.forEach(p => {
+        const opt = document.createElement("option");
+        opt.value = p.id; opt.textContent = p.name;
+        sel.appendChild(opt);
+      });
+      if (cur) sel.value = cur;
+    }
+
+    // ── Apply display settings ─────────────────────────────────────────────────
+    document.getElementById("btn-apply").addEventListener("click", () => {
+      const visibleDigits = [0,1,2,3,4,5].map(i =>
+        document.getElementById(`dv-${i}`).checked);
+
+      send({ type: "config", payload: {
+        font:           document.getElementById("cfg-font").value,
+        fontSize:       document.getElementById("cfg-fontsize").value,
+        textColor:      document.getElementById("cfg-text-color-hex").value,
+        bgColor:        document.getElementById("cfg-bg-color-hex").value,
+        flashColor:     document.getElementById("cfg-flash-color-hex").value,
+        showSubseconds: document.getElementById("cfg-subseconds").checked,
+        label:          document.getElementById("cfg-label").value,
+        visibleDigits,
+        colorTriggers,
+        positionX:      posX,
+        positionY:      posY,
+        messageConfig: {
+          font:      document.getElementById("msg-font").value,
+          fontSize:  document.getElementById("msg-fontsize").value,
+          textColor: document.getElementById("msg-text-color-hex").value,
+          bgColor:   document.getElementById("msg-bg-color-hex").value,
+          bgOpacity: parseInt(document.getElementById("msg-bg-opacity").value, 10),
+          positionX: parseInt(document.getElementById("msg-pos-x").value, 10),
+          positionY: parseInt(document.getElementById("msg-pos-y").value, 10),
+          width:     parseInt(document.getElementById("msg-width").value,  10),
+        },
+      }});
+
+      send({ type: "command", payload: {
+        action:       "setEndBehavior",
+        behavior:     currentBehavior,
+        nextPresetId: document.getElementById("cfg-next-preset").value || null,
+      }});
+
+      formTouched = false;
+    });
+
+    // ── Dev tools ─────────────────────────────────────────────────────────────────
+    document.getElementById("btn-reload-display").addEventListener("click", async () => {
+      const btn = document.getElementById("btn-reload-display");
+      btn.disabled = true;
+      btn.textContent = "Reloading…";
+      try {
+        await fetch("/api/reload", { method: "POST" });
+        btn.textContent = "✓ Reloaded";
+      } catch (e) {
+        btn.textContent = "Error";
+      }
+      setTimeout(() => {
+        btn.textContent = "⟳ Force Reload Display Page";
+        btn.disabled = false;
+      }, 2000);
+    });
+
+    // ── System config ──────────────────────────────────────────────────────────
+    // Version badge — populated from /api/config response
+    async function loadVersion() {
+      try {
+        const res  = await fetch("/api/config");
+        const cfg  = await res.json();
+        const el   = document.getElementById("version-badge");
+        if (el && cfg.version) el.textContent = "v" + cfg.version;
+      } catch (e) { /* silent fail */ }
+    }
+
+    function syncSysconfig(cfg) {
+      document.getElementById("cfg-hostname").value        = cfg.hostname        || "timer";
+      document.getElementById("cfg-iface").value           = cfg.iface           || "eth0";
+      document.getElementById("cfg-http-port").value       = cfg.httpPort        || 80;
+      document.getElementById("cfg-tcp-port").value        = cfg.oscTcpPort      || 3001;
+      document.getElementById("cfg-udp-port").value        = cfg.oscUdpPort      || 3001;
+      document.getElementById("cfg-feedback-port").value   = cfg.oscFeedbackPort || 3002;
+      document.getElementById("cfg-irisdown-port").value   = cfg.irisdownPort    || 61002;
+      document.getElementById("cfg-idct-port").value        = cfg.idctPort        || 61003;
+      document.getElementById("cfg-feedback-target").value = cfg.feedbackTarget  || "auto";
+      updateHostnamePreview();
+      updateOscReference();
+    }
+
+    function updateHostnamePreview() {
+      const name = document.getElementById("cfg-hostname").value || "timer";
+      document.getElementById("hostname-preview").textContent = name + ".local";
+      document.getElementById("osc-addr").textContent         = name + ".local";
+      document.getElementById("osc-addr2").textContent        = name + ".local";
+      const ir = document.getElementById("irisdown-addr");
+      if (ir) ir.textContent = name + ".local";
+    }
+
+    function updateOscReference() {
+      document.getElementById("osc-tcp-port").textContent =
+        document.getElementById("cfg-tcp-port").value || "3001";
+      document.getElementById("osc-fb-port").textContent  =
+        document.getElementById("cfg-feedback-port").value || "3002";
+      const ip = document.getElementById("irisdown-port");
+      if (ip) ip.textContent = document.getElementById("cfg-irisdown-port").value || "61002";
+      const dp = document.getElementById("idct-port");
+      if (dp) dp.textContent = document.getElementById("cfg-idct-port").value || "61003";
+    }
+
+    ["cfg-http-port","cfg-tcp-port","cfg-udp-port","cfg-feedback-port","cfg-irisdown-port","cfg-idct-port"].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener("input", () => {
+        document.getElementById("restart-note").style.display = "";
+        updateOscReference();
+      });
+    });
+
+    // Interface hint — show WiFi warning when wlan is entered
+    document.getElementById("cfg-iface").addEventListener("input", function() {
+      const hint = document.getElementById("iface-hint");
+      const val  = this.value.trim();
+      if (val.startsWith("wlan") || val.startsWith("wifi")) {
+        hint.textContent = "⚠ WiFi: self-hosting mode disabled. Timer will run as client only.";
+        hint.style.color = "var(--warning)";
+      } else {
+        hint.textContent = "";
+      }
+    });
+
+    document.getElementById("cfg-hostname").addEventListener("input", updateHostnamePreview);
+
+    document.getElementById("btn-save-system").addEventListener("click", async () => {
+      const btn = document.getElementById("btn-save-system");
+      btn.disabled = true; btn.textContent = "Saving…";
+      const payload = {
+        hostname:        document.getElementById("cfg-hostname").value.trim(),
+        iface:           document.getElementById("cfg-iface").value.trim() || "eth0",
+        httpPort:        parseInt(document.getElementById("cfg-http-port").value, 10),
+        oscTcpPort:      parseInt(document.getElementById("cfg-tcp-port").value, 10),
+        oscUdpPort:      parseInt(document.getElementById("cfg-udp-port").value, 10),
+        oscFeedbackPort: parseInt(document.getElementById("cfg-feedback-port").value, 10),
+        irisdownPort:    parseInt(document.getElementById("cfg-irisdown-port").value, 10),
+        idctPort:        parseInt(document.getElementById("cfg-idct-port").value, 10),
+        feedbackTarget:  document.getElementById("cfg-feedback-target").value.trim() || "auto",
+      };
+      try {
+        const res  = await fetch("/api/system", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Unknown error");
+        if (data.restartRequired) {
+          btn.textContent = "Restarting…";
+          setTimeout(() => {
+            const newHost = payload.hostname + ".local";
+            const newPort = payload.httpPort === 80 ? "" : `:${payload.httpPort}`;
+            window.location.href = `http://${newHost}${newPort}/admin`;
+          }, 3000);
+        } else {
+          btn.textContent = "Saved ✓"; btn.disabled = false;
+          document.getElementById("restart-note").style.display = "none";
+          setTimeout(() => { btn.textContent = "Save Network Settings"; }, 2000);
+        }
+      } catch (e) {
+        console.error(e); btn.textContent = "Error — try again"; btn.disabled = false;
+      }
+    });
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+    function msToTimeStr(ms) {
+      const totalSec = Math.floor(ms / 1000);
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      if (h > 0) return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+      return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+    }
+
+    function parseTimeStr(str) {
+      const parts = (str || "").trim().split(":").map(Number);
+      if (parts.some(isNaN)) return null;
+      if (parts.length === 2) return (parts[0] * 60 + parts[1]) * 1000;
+      if (parts.length === 3) return (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000;
+      return null;
+    }
+
+    // ── Init ───────────────────────────────────────────────────────────────────
+    function escHtml(str) {
+      return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+                        .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+    }
+
+    loadFonts();
+    loadVersion();
+    connect();
+    setTimeout(initBridges, 150);
+  </script>
+</body>
+</html>

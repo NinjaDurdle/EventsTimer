@@ -1,0 +1,40 @@
+{
+  "name": "companion-module-binarylogic-countdowntimer",
+  "version": "1.0.0",
+  "description": "Bitfocus Companion module for the BinaryLogic Countdown Timer",
+  "main": "index.js",
+  "keywords": [
+    "companion-module"
+  ],
+  "author": "",
+  "license": "MIT",
+  "bugs": {},
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "companion-module-build"
+  },
+  "dependencies": {
+    "@companion-module/base": "^1.8.0"
+  },
+  "devDependencies": {
+    "@companion-module/tools": "^2.0.0"
+  },
+  "companion": {
+    "moduleId": "binarylogic-countdowntimer",
+    "product": "Countdown Timer",
+    "shortname": "CountdownTimer",
+    "manufacturer": "BinaryLogic",
+    "keywords": [
+      "timer",
+      "countdown",
+      "stage",
+      "event"
+    ],
+    "minApiVersion": "1.8.0",
+    "hasHttpHandler": false,
+    "hasRecordActionHandler": false,
+    "supportsChildProcessKilling": true
+  }
+}
