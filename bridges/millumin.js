@@ -2,19 +2,18 @@
 /* BRIDGE_META
 {
   "name": "Millumin V4/V5",
-  "version": "1.3.1",
+  "version": "1.4.0",
+  "type": "receive",
   "description": "Receives media time from a named Millumin layer via OSC feedback and drives the display. Enable API feedback in Millumin (CMD+K → OSC tab → API feedback). Name the layer you want to monitor 'time' in your Millumin project (or configure a different name below).",
   "fields": [
-    { "id": "port",         "label": "OSC feedback receive port", "type": "number",   "default": "5001" },
-    { "id": "layer",        "label": "Millumin layer name",       "type": "text",     "default": "time" },
-    { "id": "timer",        "label": "Timer host",                "type": "text",     "default": "localhost" },
-    { "id": "timer-port",   "label": "Timer OSC port",            "type": "number",   "default": "3001" },
+    { "id": "port",         "label": "OSC feedback receive port", "type": "number", "default": "5001" },
+    { "id": "layer",        "label": "Millumin layer name",       "type": "text",   "default": "time" },
     { "id": "no-auto-mode", "label": "Skip auto-switch to External mode", "type": "checkbox", "default": false }
   ]
 }
 BRIDGE_META */
 /**
- * bridges/millumin.js — Millumin V4/V5 → Countdown Timer bridge
+ * bridges/millumin.js — Millumin V4/V5 → EventsTimer bridge
  *
  * Millumin setup:
  *   1. Open Device Manager (CMD+K) → OSC tab
@@ -24,59 +23,72 @@ BRIDGE_META */
  *
  * Millumin sends /millumin/layer:time/media/time [float:elapsed, float:duration]
  * continuously while media is playing. We compute remaining = duration - elapsed
- * and forward to the timer.
+ * and forward to the timer via WebSocket.
  *
  * Works identically for V4 and V5 — same OSC address scheme.
+ *
+ * Options:
+ *   --port <number>     UDP port to receive Millumin OSC feedback on (default: 5001)
+ *   --layer <name>      Millumin layer name to monitor (default: time)
+ *   --http-port <n>     EventsTimer HTTP/WS port (default: 80, injected by bridge manager)
+ *   --no-auto-mode      Don't automatically switch timer to external mode
  */
 
-const dgram = require("dgram");
-const osc   = require("osc");
+const osc = require("osc");
+const { WebSocket } = require("ws");
 
 // ── Args ──────────────────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
-function arg(name, def) { const i = args.indexOf(name); return i !== -1 ? args[i+1] : def; }
+function arg(name, def) { const i = args.indexOf(name); return i !== -1 ? args[i + 1] : def; }
 
-const LISTEN_PORT  = parseInt(arg("--port",       "5001"),      10);
-const LAYER_NAME   = arg("--layer",     "time");
-const TIMER_HOST   = arg("--timer",     "localhost");
-const TIMER_PORT   = parseInt(arg("--timer-port", "3001"),      10);
-const AUTO_MODE    = !args.includes("--no-auto-mode");
+const LISTEN_PORT = parseInt(arg("--port",       "5001"), 10);
+const LAYER_NAME  = arg("--layer",     "time");
+const HTTP_PORT   = parseInt(arg("--http-port",  "80"),   10);
+const AUTO_MODE   = !args.includes("--no-auto-mode");
 
-// Build the OSC address we listen for — matches /millumin/layer:<name>/media/time
 const TARGET_ADDR = `/millumin/layer:${LAYER_NAME}/media/time`;
 
-console.log("\nMillumin V4/V5 → Countdown Timer bridge");
+console.log("\nMillumin V4/V5 → EventsTimer bridge");
 console.log(`  Listening on UDP port ${LISTEN_PORT}`);
 console.log(`  Watching layer: "${LAYER_NAME}" (${TARGET_ADDR})`);
-console.log(`  Timer: ${TIMER_HOST}:${TIMER_PORT}`);
+console.log(`  Timer WS:  ws://localhost:${HTTP_PORT}`);
 console.log(`  Auto-mode: ${AUTO_MODE}\n`);
 
-// ── UDP sender ────────────────────────────────────────────────────────────────
+// ── WebSocket connection to EventsTimer ───────────────────────────────────────
 
-const sender = dgram.createSocket("udp4");
-sender.bind(() => {});
+let ws;
+let modeSet = false;
+let wsReconnectDelay = 2000;
 
-function sendToTimer(cmd) {
-  const buf = Buffer.from(cmd + "\n");
-  sender.send(buf, TIMER_PORT, TIMER_HOST, (err) => {
-    if (err) console.error("Send error:", err.message);
+function sendCommand(action, payload = {}) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: "command", payload: { action, ...payload } }));
+}
+
+function connectWs() {
+  ws = new WebSocket(`ws://localhost:${HTTP_PORT}`);
+
+  ws.on("open", () => {
+    wsReconnectDelay = 2000;
+  });
+
+  ws.on("close", () => {
+    modeSet = false;
+    setTimeout(connectWs, wsReconnectDelay);
+    wsReconnectDelay = Math.min(wsReconnectDelay * 1.5, 30_000);
+  });
+
+  ws.on("error", (e) => {
+    console.error(`  WS error: ${e.message}`);
+    ws.terminate();
   });
 }
 
-// ── Seconds → HH:MM:SS ───────────────────────────────────────────────────────
-
-function secondsToHms(totalSeconds) {
-  const s = Math.max(0, totalSeconds);
-  const hh = Math.floor(s / 3600);
-  const mm = Math.floor((s % 3600) / 60);
-  const ss = Math.floor(s % 60);
-  return [hh, mm, ss].map(n => String(n).padStart(2, "0")).join(":");
-}
+connectWs();
 
 // ── OSC receiver ──────────────────────────────────────────────────────────────
 
-let modeSet      = false;
 let lastDuration = 0;
 
 const udp = new osc.UDPPort({
@@ -93,17 +105,16 @@ udp.on("message", (msg) => {
   const duration = msg.args && msg.args[1] ? msg.args[1].value : lastDuration;
   if (duration > 0) lastDuration = duration;
 
-  const remaining = Math.max(0, duration - elapsed);
+  const remainingMs = Math.max(0, Math.round((duration - elapsed) * 1000));
 
   if (AUTO_MODE && !modeSet) {
-    sendToTimer("/timer/mode external");
+    sendCommand("setMode", { mode: "external" });
     modeSet = true;
     console.log("  Timer set to external mode");
   }
 
-  const hms = secondsToHms(remaining);
-  sendToTimer(`/timer/set ${hms}`);
-  process.stdout.write(`\r  elapsed=${elapsed.toFixed(1)}s  duration=${duration.toFixed(1)}s  remaining=${hms}  `);
+  sendCommand("setTime", { ms: remainingMs });
+  process.stdout.write(`\r  elapsed=${elapsed.toFixed(1)}s  duration=${duration.toFixed(1)}s  remaining=${remainingMs}ms  `);
 });
 
 udp.on("error", (err) => console.error("OSC error:", err.message));
@@ -114,7 +125,7 @@ console.log(`(In Millumin: CMD+K → OSC → API feedback → target this Pi on 
 
 process.on("SIGINT", () => {
   console.log("\nBridge stopped.");
-  sender.close();
+  if (ws) ws.terminate();
   udp.close();
   process.exit(0);
 });

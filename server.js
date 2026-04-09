@@ -1,26 +1,21 @@
 /**
- * server.js — Countdown Timer Server (v1.3.1)
+ * server.js — Countdown Timer Server (v1.4.0)
  *
- * New in v1.2:
- *  - displayConfig gains: visibleDigits, colorTriggers, positionX, positionY
- *  - messageConfig — independent font/size/color for the message area
- *  - timerState gains: message (string, empty = hidden)
- *  - Stop command zeroes timer and clears endReached/flash
- *  - setMode "clock" auto-starts the timer
- *  - GET /api/fonts — returns installed font families via fc-list
- *  - handleConfig accepts "message" and "messageConfig" keys
+ * New in v1.4:
+ *  - Bridge system: receive, control, and transmit bridge types
+ *  - All protocol handling (TCP/UDP control, Irisdown, IDCT, LTC, OSC) moved to bridges
+ *  - server.js now provides only HTTP + WebSocket core; everything else is optional
+ *  - Single-receive enforcement: only one receive bridge may run at a time
+ *  - Bridge auto-restart on unexpected exit
  */
 
 const http     = require("http");
 const fs       = require("fs");
-const os       = require("os");
 const path     = require("path");
-const net      = require("net");
-const dgram    = require("dgram");
 const { exec, execSync } = require("child_process");
 const { WebSocketServer, WebSocket } = require("ws");
 
-const TIMER_VERSION = "1.3.1";
+const TIMER_VERSION = "1.4.0";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -31,12 +26,6 @@ const TICK_MS      = 100;
 
 const CONFIG_DEFAULTS = {
   httpPort:        80,
-  oscTcpPort:      3001,
-  oscUdpPort:      3001,
-  oscFeedbackPort: 3002,
-  feedbackTarget:  "auto",
-  irisdownPort:    61002,
-  idctPort:        61003,
   hostname:        "timer",
   iface:           "eth0",
 };
@@ -185,25 +174,6 @@ function getFullState() {
   };
 }
 
-function formatMs(ms, showSubseconds = false) {
-  const totalSec = Math.floor(ms / 1000);
-  const hours    = Math.floor(totalSec / 3600);
-  const minutes  = Math.floor((totalSec % 3600) / 60);
-  const seconds  = totalSec % 60;
-  const tenths   = Math.floor((ms % 1000) / 100);
-  const hh = String(hours).padStart(2, "0");
-  const mm = String(minutes).padStart(2, "0");
-  const ss = String(seconds).padStart(2, "0");
-  return showSubseconds ? `${hh}:${mm}:${ss}.${tenths}` : `${hh}:${mm}:${ss}`;
-}
-
-function parseTimeString(str) {
-  const parts = (str || "").trim().split(":").map(Number);
-  if (parts.length !== 3 || parts.some(isNaN)) return null;
-  const [h, m, s] = parts;
-  if (m > 59 || s > 59) return null;
-  return (h * 3600 + m * 60 + s) * 1000;
-}
 
 // ─── Command Handlers ─────────────────────────────────────────────────────────
 
@@ -401,221 +371,8 @@ function broadcast(msg) {
   }
 }
 
-// ─── OSC/TCP Server ───────────────────────────────────────────────────────────
-
-function startTcpServer(port) {
-  const server = net.createServer((socket) => {
-    console.log(`OSC/TCP client connected: ${socket.remoteAddress}`);
-    let buffer = "";
-    socket.setEncoding("utf8");
-    socket.on("data", (chunk) => {
-      buffer += chunk;
-      let i;
-      while ((i = buffer.indexOf("\n")) !== -1) {
-        const line = buffer.slice(0, i).trim();
-        buffer     = buffer.slice(i + 1);
-        if (line) handleOscCommand(line);
-      }
-    });
-    socket.on("close", () => console.log("OSC/TCP client disconnected"));
-    socket.on("error", (e) => console.error("OSC/TCP error:", e.message));
-  });
-  server.listen(port, "0.0.0.0", () => console.log(`  OSC/TCP:      port ${port}`));
-  server.on("error", (e) => console.error(`OSC/TCP server error (port ${port}):`, e.message));
-  return server;
-}
-
-// ─── OSC/UDP Server ───────────────────────────────────────────────────────────
-
-const udpSenders = new Map();
-const SENDER_TTL = 30_000;
-
-function startUdpServer(port) {
-  const sock = dgram.createSocket("udp4");
-  sock.on("message", (msg, rinfo) => {
-    const key = `${rinfo.address}:${rinfo.port}`;
-    udpSenders.set(key, { address: rinfo.address, port: rinfo.port, lastSeen: Date.now() });
-    const line = msg.toString("utf8").trim();
-    if (line) handleOscCommand(line);
-  });
-  sock.on("error", (e) => console.error(`OSC/UDP error (port ${port}):`, e.message));
-  sock.bind(port, "0.0.0.0", () => console.log(`  OSC/UDP:      port ${port}`));
-  return sock;
-}
-
-// ─── OSC Command Parser ───────────────────────────────────────────────────────
-
-function handleOscCommand(line) {
-  console.log(`OSC ← "${line}"`);
-  const parts = line.split(/\s+/);
-  const cmd   = parts[0].toLowerCase();
-
-  switch (cmd) {
-    case "/timer/start":  handleCommand("start"); break;
-    case "/timer/pause":  handleCommand("pause"); break;
-    case "/timer/stop":   handleCommand("stop");  break;
-    case "/timer/reset":  handleCommand("reset"); break;
-
-    case "/timer/set": {
-      const ms = parseTimeString(parts[1]);
-      if (ms !== null) handleCommand("setTime", { ms });
-      else console.warn(`OSC /timer/set: invalid time "${parts[1]}"`);
-      break;
-    }
-    case "/timer/mode": {
-      const mode = (parts[1] || "").toLowerCase();
-      if (["countdown", "countup", "clock", "external"].includes(mode))
-        handleCommand("setMode", { mode });
-      else console.warn(`OSC /timer/mode: unknown mode "${parts[1]}"`);
-      break;
-    }
-    case "/timer/preset/load":
-      if (parts[1]) handlePreset("load", { id: parts[1] });
-      else console.warn("OSC /timer/preset/load: missing id");
-      break;
-
-    case "/timer/add": {
-      const addMins = parts[1] !== undefined ? parseFloat(parts[1]) : 1;
-      if (isNaN(addMins)) { console.warn(`OSC /timer/add: invalid value "${parts[1]}"`); break; }
-      handleCommand("adjust", { deltaMs: Math.round(addMins * 60_000) });
-      break;
-    }
-    case "/timer/subtract": {
-      const subMins = parts[1] !== undefined ? parseFloat(parts[1]) : 1;
-      if (isNaN(subMins)) { console.warn(`OSC /timer/subtract: invalid value "${parts[1]}"`); break; }
-      handleCommand("adjust", { deltaMs: -Math.round(subMins * 60_000) });
-      break;
-    }
-    case "/timer/preset/save": {
-      const saveId = parts[1];
-      if (!saveId) { console.warn("OSC /timer/preset/save: missing id"); break; }
-      const existing = presets.find(p => p.id === saveId);
-      if (!existing) { console.warn(`OSC /timer/preset/save: no preset with id "${saveId}"`); break; }
-      handlePreset("save", {
-        id:           saveId,
-        name:         existing.name,
-        mode:         timerState.mode,
-        targetMs:     timerState.mode === "countdown" ? timerState.currentMs : timerState.targetMs,
-        endBehavior:  timerState.endBehavior,
-        nextPresetId: timerState.nextPresetId,
-        displayConfig: { ...displayConfig },
-      });
-      broadcast({ type: "presets", payload: presets });
-      break;
-    }
-    case "/timer/message":
-      // /timer/message <text> or /timer/message (no arg = clear)
-      handleCommand("setMessage", { text: parts.slice(1).join(" ") });
-      break;
-
-    default:
-      console.warn(`OSC: unknown command "${cmd}"`);
-  }
-
-  broadcast({ type: "state", payload: getFullState() });
-  if (global._pushIrisdownUpdate) global._pushIrisdownUpdate();
-}
-
-// ─── UDP Feedback Broadcast ───────────────────────────────────────────────────
-
-function getSubnetBroadcasts() {
-  const broadcasts = [];
-  const ifaces = os.networkInterfaces();
-  for (const iface of Object.values(ifaces)) {
-    for (const addr of iface) {
-      if (addr.family !== "IPv4" || addr.internal) continue;
-      const prefixLen = addr.cidr ? parseInt(addr.cidr.split("/")[1], 10) : 24;
-      const ipParts   = addr.address.split(".").map(Number);
-      const maskInt   = prefixLen === 0 ? 0 : (~0 << (32 - prefixLen)) >>> 0;
-      const ipInt     = (ipParts[0] << 24 | ipParts[1] << 16 | ipParts[2] << 8 | ipParts[3]) >>> 0;
-      const bcInt     = (ipInt | (~maskInt >>> 0)) >>> 0;
-      const bc        = [bcInt >>> 24, (bcInt >> 16) & 0xff, (bcInt >> 8) & 0xff, bcInt & 0xff].join(".");
-      broadcasts.push(bc);
-    }
-  }
-  return broadcasts;
-}
-
-function startFeedbackBroadcast(feedbackPort) {
-  const sock = dgram.createSocket("udp4");
-  sock.bind(() => {
-    sock.setBroadcast(true);
-    console.log(`  OSC feedback: port ${feedbackPort} (target: ${config.feedbackTarget || "auto"})`);
-  });
-  sock.on("error", (e) => console.error("Feedback socket error:", e.message));
-
-  function buildFeedback() {
-    const t = timerState;
-    return Buffer.from(
-      `/timer/state running=${t.running} mode=${t.mode} ` +
-      `time=${formatMs(t.currentMs, displayConfig.showSubseconds)} ` +
-      `ms=${Math.floor(t.currentMs)} end=${t.endReached}\n`
-    );
-  }
-
-  function pruneSenders() {
-    const cutoff = Date.now() - SENDER_TTL;
-    for (const [k, v] of udpSenders) if (v.lastSeen < cutoff) udpSenders.delete(k);
-  }
-
-  function sendTo(msg, address) {
-    sock.send(msg, feedbackPort, address, (e) => {
-      if (e) console.error(`Feedback send error to ${address}:`, e.message);
-    });
-  }
-
-  setInterval(() => {
-    pruneSenders();
-    const msg    = buildFeedback();
-    const target = (config.feedbackTarget || "auto").trim().toLowerCase();
-    if (target === "auto") {
-      const broadcasts = getSubnetBroadcasts();
-      for (const bc of broadcasts) sendTo(msg, bc);
-      if (broadcasts.length === 0)
-        console.debug("Feedback: no active interfaces, skipping broadcast");
-    } else {
-      sendTo(msg, target);
-    }
-    for (const { address, feedbackPort } of udpSenders.values()) {
-      sock.send(msg, feedbackPort, address, (e) => {
-        if (e) console.error(`Feedback unicast error to ${address}:`, e.message);
-      });
-    }
-  }, 500);
-}
 
 
-// ─── IDCT Broadcast (Interspace Industries CDEther compatible) ────────────────
-// Broadcasts a 20-character UDP string every 100ms on port 61003.
-// Format (Irisdown Countdown Timer v2.0.10+ / CDEther protocol):
-//   "IDCT:" + sign + seconds(6 digits) + instanceId(hex) + color + blink + padding
-// This makes the Pi a drop-in replacement for a CDEther transmitter —
-// any CDEther receiver or compatible app on the network will display our time.
-
-function startIdctBroadcast(idctPort) {
-  const sock = dgram.createSocket("udp4");
-  sock.bind(() => {
-    sock.setBroadcast(true);
-    console.log(`  IDCT broadcast: port ${idctPort} (CDEther compatible)`);
-  });
-  sock.on("error", (e) => console.error("IDCT socket error:", e.message));
-
-  setInterval(() => {
-    const ms      = timerState.currentMs;
-    const seconds = Math.floor(ms / 1000);
-    const sign    = timerState.endReached ? "-" : "+";  // "-" = overtime per spec
-    const secStr  = String(seconds).padStart(6, "0");   // max 344619 (99h59m59s)
-    const instId  = "0";   // single instance, hex 0
-    const color   = "G";   // green — color change not yet implemented per spec
-    const blink   = "0";   // no blink
-    const padding = "     ";  // 5 unused chars for future expansion
-    const packet  = Buffer.from(`IDCT:${sign}${secStr}${instId}${color}${blink}${padding}`);
-    // Always broadcast to 255.255.255.255 as per Irisdown spec
-    sock.send(packet, idctPort, "255.255.255.255", (e) => {
-      if (e) console.error("IDCT broadcast error:", e.message);
-    });
-  }, 100); // 100ms interval per Irisdown protocol spec
-}
 
 
 // ─── Bridge Manager ───────────────────────────────────────────────────────────
@@ -656,6 +413,7 @@ function listBridges() {
       return {
         id,
         ...meta,
+        type:      meta.type || "receive",
         running:   !!(proc && proc.process),
         shouldRun: !!(proc && proc.shouldRun),
         config:    proc ? proc.config : {},
@@ -692,17 +450,36 @@ function configToArgs(config) {
   return args;
 }
 
-function startBridge(id, config) {
+function startBridge(id, bridgeConfig) {
   const scriptPath = path.join(BRIDGES_DIR, id + ".js");
   if (!fs.existsSync(scriptPath)) {
     console.warn("Bridge script not found:", scriptPath);
     return false;
   }
 
+  // Enforce single-receive rule — only one receive bridge at a time.
+  // control and transmit bridges have no such restriction.
+  const meta = readBridgeMeta(scriptPath);
+  if (!meta.type) console.warn(`Bridge "${id}" has no type in BRIDGE_META — treating as receive`);
+  const bridgeType = meta.type || "receive";
+  if (bridgeType === "receive") {
+    for (const [otherId, info] of bridgeProcesses) {
+      if (otherId === id) continue;
+      if (info.shouldRun && info.process) {
+        const otherMeta = readBridgeMeta(path.join(BRIDGES_DIR, otherId + ".js"));
+        const otherType = otherMeta.type || "receive";
+        if (otherType === "receive") {
+          console.warn(`Cannot start receive bridge "${id}" — "${otherId}" is already running`);
+          return { conflict: otherId };
+        }
+      }
+    }
+  }
+
   // Kill existing process if any
   stopBridge(id, false);
 
-  const args = configToArgs(config);
+  const args = ["--http-port", String(config.httpPort), ...configToArgs(bridgeConfig)];
   console.log("Starting bridge:", id, args);
 
   const proc = spawn(process.execPath, [scriptPath, ...args], {
@@ -729,7 +506,7 @@ function startBridge(id, config) {
     broadcast({ type: "bridges", payload: listBridges() });
   });
 
-  bridgeProcesses.set(id, { process: proc, config, shouldRun: true });
+  bridgeProcesses.set(id, { process: proc, config: bridgeConfig, shouldRun: true });
   saveBridgeState();
   broadcast({ type: "bridges", payload: listBridges() });
   return true;
@@ -797,192 +574,6 @@ function getInstalledFonts() {
 }
 
 
-// ─── Irisdown TCP Server (port 61002) ────────────────────────────────────────
-// Implements the Irisdown Countdown Timer v2.0.10 Remote Control Protocol.
-// Commands are plain ASCII, newline-terminated — similar to our OSC TCP server.
-// Supports UPDATES ON mode 2 for push feedback to connected clients.
-//
-// Command mapping to our internal handlers:
-//   GO           → start
-//   PAUSE        → pause
-//   TOGGLEPAUSE  → start (if stopped) or pause (if running)
-//   RESET        → reset
-//   RESET hh:mm:ss → setTime
-//   JOG <min>    → adjust
-//   MESSAGE "x"  → setMessage
-//   MESSAGE CLEAR → setMessage (empty)
-//   STATE        → returns PLAYING | PAUSED | STOPPED
-//   REMAINING    → returns seconds remaining
-//   UPDATES ON/OFF → subscribe to push updates (mode 2)
-//   VERSION      → returns our version string
-
-function startIrisdownServer(port) {
-  const irisdownClients = new Map(); // socket → { updatesEnabled }
-
-  // Push an UPDATES mode 2 line to all subscribed Irisdown clients
-  function pushIrisdownUpdate() {
-    const t       = timerState;
-    const ms      = t.currentMs;
-    const sign    = t.endReached ? "-" : "+";
-    const hh      = String(Math.floor(ms / 3_600_000)).padStart(2, "0");
-    const mm      = String(Math.floor((ms % 3_600_000) / 60_000)).padStart(2, "0");
-    const ss      = String(Math.floor((ms % 60_000) / 1_000)).padStart(2, "0");
-    const state   = t.running ? "PLAYING" : (t.currentMs === t.targetMs ? "STOPPED" : "PAUSED");
-    const display = t.mode === "clock" ? "CLOCK" : "TIMER";
-    const message = (t.message && t.message.trim()) ? "TRUE" : "FALSE";
-    const line    = `TIME=${sign}${hh}:${mm}:${ss}&STATE=${state}&DISPLAY=${display}&MESSAGE=${message}\r\n`;
-    for (const [sock, info] of irisdownClients) {
-      if (info.updatesEnabled && sock.writable) {
-        sock.write(line);
-      }
-    }
-  }
-
-  // Hook into the broadcast cycle so Irisdown clients get updates too
-  // We store the push function globally so the tick/command handlers can call it
-  global._pushIrisdownUpdate = pushIrisdownUpdate;
-
-  const server = net.createServer((socket) => {
-    console.log(`Irisdown client connected: ${socket.remoteAddress}`);
-    irisdownClients.set(socket, { updatesEnabled: false });
-
-    let buffer = "";
-    socket.setEncoding("utf8");
-
-    function reply(msg) {
-      if (socket.writable && !irisdownClients.get(socket)?.updatesEnabled) {
-        socket.write(msg + "\r\n");
-      }
-    }
-
-    socket.on("data", (chunk) => {
-      buffer += chunk;
-      let i;
-      while ((i = buffer.indexOf("\n")) !== -1) {
-        const line = buffer.slice(0, i).replace(/\r$/, "").trim();
-        buffer     = buffer.slice(i + 1);
-        if (!line) continue;
-
-        console.log(`Irisdown ← "${line}"`);
-        const upper = line.toUpperCase();
-        const parts = line.split(/\s+/);
-        const cmd   = parts[0].toUpperCase();
-
-        if (cmd === "GO") {
-          handleCommand("start");
-          reply("OK");
-
-        } else if (cmd === "PAUSE") {
-          handleCommand("pause");
-          reply("OK");
-
-        } else if (cmd === "TOGGLEPAUSE") {
-          handleCommand(timerState.running ? "pause" : "start");
-          reply("OK");
-
-        } else if (cmd === "RESET" && parts.length === 1) {
-          handleCommand("reset");
-          reply("OK");
-
-        } else if (cmd === "RESET" && parts.length === 2) {
-          // RESET <minutes> or RESET hh:mm or RESET hh:mm:ss
-          let ms = null;
-          if (parts[1].includes(":")) {
-            ms = parseTimeString(parts[1]);
-          } else {
-            const mins = parseFloat(parts[1]);
-            if (!isNaN(mins)) ms = Math.round(mins * 60_000);
-          }
-          if (ms !== null) {
-            handleCommand("setTime", { ms });
-            handleCommand("reset");
-            reply("OK");
-          } else {
-            reply("ERROR");
-          }
-
-        } else if (cmd === "JOG" && parts.length === 2) {
-          const mins = parseFloat(parts[1]);
-          if (!isNaN(mins)) {
-            handleCommand("adjust", { deltaMs: Math.round(mins * 60_000) });
-            reply("OK");
-          } else {
-            reply("ERROR");
-          }
-
-        } else if (cmd === "REMAINING") {
-          reply(String(Math.floor(timerState.currentMs / 1000)));
-
-        } else if (cmd === "STATE") {
-          const t = timerState;
-          const state = t.running ? "PLAYING"
-                      : (t.currentMs === t.targetMs || t.currentMs === 0) ? "STOPPED"
-                      : "PAUSED";
-          reply(state);
-
-        } else if (cmd === "VERSION") {
-          reply("VERSION 2.0.10.0");  // report Irisdown-compatible version
-
-        } else if (cmd === "UPDATES") {
-          const onOff = (parts[1] || "").toUpperCase();
-          if (onOff === "ON") {
-            irisdownClients.get(socket).updatesEnabled = true;
-            // Send immediate state so client doesn't wait for next change
-            pushIrisdownUpdate();
-          } else if (onOff === "OFF") {
-            irisdownClients.get(socket).updatesEnabled = false;
-            reply("OK");
-          } else {
-            reply("ERROR");
-          }
-
-        } else if (cmd === "UPDATEMODE") {
-          // We only implement mode 2 — silently accept mode 2, reject others
-          if (parts[1] === "2") reply("OK");
-          else reply("ERROR");
-
-        } else if (cmd === "MESSAGE") {
-          const rest = line.slice(8).trim(); // everything after "MESSAGE "
-          if (rest.toUpperCase() === "CLEAR" || rest === "") {
-            handleCommand("setMessage", { text: "" });
-          } else {
-            // Strip surrounding quotes if present
-            const text = rest.replace(/^"|"$/g, "");
-            handleCommand("setMessage", { text });
-          }
-          reply("OK");
-
-        } else if (cmd === "DISPLAY") {
-          // DISPLAY TIMER|CLOCK|BLACK|TEST — we support TIMER and CLOCK
-          const mode = (parts[1] || "").toUpperCase();
-          if (mode === "CLOCK") handleCommand("setMode", { mode: "clock" });
-          else if (mode === "TIMER") {
-            if (timerState.mode === "clock") handleCommand("setMode", { mode: "countdown" });
-          }
-          reply("OK");
-
-        } else {
-          reply("ERROR");
-        }
-
-        broadcast({ type: "state", payload: getFullState() });
-      }
-    });
-
-    socket.on("close", () => {
-      irisdownClients.delete(socket);
-      console.log("Irisdown client disconnected");
-    });
-    socket.on("error", (e) => {
-      console.error("Irisdown TCP error:", e.message);
-      irisdownClients.delete(socket);
-    });
-  });
-
-  server.listen(port, "0.0.0.0", () => console.log(`  Irisdown TCP: port ${port}`));
-  server.on("error", (e) => console.error(`Irisdown server error (port ${port}):`, e.message));
-  return server;
-}
 
 // ─── Avahi / mDNS Hostname ────────────────────────────────────────────────────
 
@@ -1045,9 +636,14 @@ function handleApiRequest(req, res) {
       catch { res.writeHead(400); res.end(JSON.stringify({ error: "Invalid JSON" })); return; }
       const { id, config = {} } = payload;
       if (!id) { res.writeHead(400); res.end(JSON.stringify({ error: "Missing id" })); return; }
-      const ok = startBridge(id, config);
-      res.writeHead(ok ? 200 : 404, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok, bridges: listBridges() }));
+      const result = startBridge(id, config);
+      if (result && result.conflict) {
+        res.writeHead(409, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: `Cannot start receive bridge "${id}" — "${result.conflict}" is already running`, conflictingBridge: result.conflict, bridges: listBridges() }));
+        return;
+      }
+      res.writeHead(result ? 200 : 404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: !!result, bridges: listBridges() }));
     });
     return true;
   }
@@ -1100,19 +696,7 @@ function handleApiRequest(req, res) {
       try { updates = JSON.parse(body); }
       catch { res.writeHead(400); res.end(JSON.stringify({ error: "Invalid JSON" })); return; }
 
-      const portKeys = ["httpPort", "oscTcpPort", "oscUdpPort", "oscFeedbackPort", "irisdownPort", "idctPort"];
-
-      if (updates.feedbackTarget !== undefined) {
-        const t = updates.feedbackTarget.trim();
-        const isAuto = t.toLowerCase() === "auto";
-        const isIp   = /^\d{1,3}(\.\d{1,3}){3}$/.test(t);
-        if (!isAuto && !isIp) {
-          res.writeHead(400);
-          res.end(JSON.stringify({ error: "feedbackTarget must be 'auto' or a valid IP address" }));
-          return;
-        }
-        updates.feedbackTarget = t;
-      }
+      const portKeys = ["httpPort"];
 
       for (const key of portKeys) {
         if (!(key in updates)) continue;
@@ -1200,7 +784,6 @@ wss.on("connection", (ws) => {
     }
 
     broadcast({ type: "state", payload: getFullState() });
-    if (global._pushIrisdownUpdate) global._pushIrisdownUpdate();
   });
 
   ws.on("close", () => { wsClients.delete(ws); console.log(`WS disconnected (${wsClients.size} remaining)`); });
@@ -1210,7 +793,7 @@ wss.on("connection", (ws) => {
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 server.listen(config.httpPort, "0.0.0.0", () => {
-  console.log(`\nCountdown Timer v1.3.1`);
+  console.log(`\nCountdown Timer v1.4.0`);
   console.log(`  HTTP/WS:      port ${config.httpPort}`);
   console.log(`  Display:      http://localhost:${config.httpPort}/display`);
   console.log(`  Control:      http://localhost:${config.httpPort}/control`);
@@ -1218,9 +801,4 @@ server.listen(config.httpPort, "0.0.0.0", () => {
 });
 
 restoreBridges();
-startTcpServer(config.oscTcpPort);
-startUdpServer(config.oscUdpPort);
-startFeedbackBroadcast(config.oscFeedbackPort);
-startIdctBroadcast(config.idctPort);
-startIrisdownServer(config.irisdownPort);
 applyAvahiHostname(config.hostname);

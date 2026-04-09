@@ -1,10 +1,4 @@
 {
   "httpPort": 80,
-  "oscTcpPort": 3001,
-  "oscUdpPort": 3001,
-  "oscFeedbackPort": 3002,
-  "feedbackTarget": "auto",
-  "irisdownPort": 61002,
-  "idctPort": 61003,
   "hostname": "timer"
 }

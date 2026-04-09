@@ -497,8 +497,7 @@
             </div>
           </div>
           <div style="font-size:0.68rem;color:var(--muted);margin-top:6px;">
-            Listening on Irisdown TCP port and IDCT UDP port 61003.<br>
-            Switch to External mode on the control page, then start your source.
+            Switch to External mode on the control page, then start your source bridge.
           </div>
         </div>
       </div>
@@ -523,8 +522,7 @@
           <button id="btn-refresh-bridges" style="background:none;border:none;color:var(--muted);font-size:0.75rem;cursor:pointer;padding:0;opacity:0.6;" title="Refresh bridge list">⟳ Refresh</button>
         </div>
         <div style="font-size:0.72rem;color:var(--muted);margin-bottom:12px;">
-          Bridges connect external playback systems to this timer.
-          Each bridge runs as a background process on the Pi.
+          Bridges run as background processes on the Pi. Receive bridges drive the timer from an external source. Control bridges accept operator commands. Transmit bridges broadcast timer state outward.
         </div>
         <div id="bridge-list">
           <div style="font-size:0.8rem;color:var(--muted);text-align:center;padding:10px 0;">
@@ -566,37 +564,6 @@
             <label>Web UI (HTTP)</label>
             <input type="number" id="cfg-http-port" min="1" max="65535" value="80">
           </div>
-          <div class="port-field">
-            <label>OSC Control (TCP)</label>
-            <input type="number" id="cfg-tcp-port" min="1" max="65535" value="3001">
-          </div>
-          <div class="port-field">
-            <label>OSC Control (UDP)</label>
-            <input type="number" id="cfg-udp-port" min="1" max="65535" value="3001">
-          </div>
-          <div class="port-field">
-            <label>OSC Feedback (UDP)</label>
-            <input type="number" id="cfg-feedback-port" min="1" max="65535" value="3002">
-          </div>
-          <div class="port-field">
-            <label>Irisdown TCP</label>
-            <input type="number" id="cfg-irisdown-port" min="1" max="65535" value="61002">
-          </div>
-          <div class="port-field">
-            <label>IDCT Broadcast</label>
-            <input type="number" id="cfg-idct-port" min="1" max="65535" value="61003">
-          </div>
-        </div>
-        <div style="margin-bottom:10px;">
-          <div style="font-size:0.72rem;color:var(--muted);margin-bottom:5px;">Feedback destination</div>
-          <input type="text" id="cfg-feedback-target" value="auto"
-                 placeholder="auto  or  192.168.1.50"
-                 style="width:100%;background:var(--surface2);border:1px solid var(--border);
-                        border-radius:6px;color:var(--text);padding:6px 9px;font-family:monospace;font-size:0.85rem;">
-          <div style="font-size:0.68rem;color:var(--muted);margin-top:3px;">
-            <strong>auto</strong> = broadcast to all active subnets &nbsp;|&nbsp;
-            <strong>x.x.x.x</strong> = unicast to Companion's IP
-          </div>
         </div>
         <div class="restart-note" id="restart-note" style="display:none;">
           ⚠ Port changes will restart the server. Page will reconnect automatically.
@@ -604,24 +571,21 @@
         <button class="btn-system" id="btn-save-system">Save Network Settings</button>
       </div>
 
-      <!-- OSC Reference -->
+      <!-- Command Reference -->
       <div class="card">
-        <h2>OSC / Streamdeck Reference</h2>
+        <h2>UDP / Companion Reference</h2>
         <div class="osc-ref">
-          Send to <span id="osc-addr">timer.local</span>:<span id="osc-tcp-port">3001</span> (TCP or UDP)<br>
-          Feedback from <span id="osc-addr2">timer.local</span>:<span id="osc-fb-port">3002</span> (UDP broadcast)<br><br>
+          Send to <span id="osc-addr">timer.local</span> via TCP or UDP (port configured in bridge)<br><br>
           <span>/timer/start</span> &nbsp; <span>/timer/pause</span> &nbsp; <span>/timer/stop</span> &nbsp; <span>/timer/reset</span><br>
           <span>/timer/set</span> HH:MM:SS<br>
-          <span>/timer/mode</span> countdown|countup|clock<br>
+          <span>/timer/mode</span> countdown|countup|clock|external<br>
           <span>/timer/add</span> [min] &nbsp; <span>/timer/subtract</span> [min]<br>
           <span>/timer/preset/load</span> &lt;id&gt;<br>
           <span>/timer/preset/save</span> &lt;id&gt;<br>
           <span>/timer/message</span> &lt;text&gt;<br><br>
-          Feedback: <span>/timer/state</span> running=… mode=… time=… ms=… end=…<br><br>
-          Irisdown TCP: <span id="irisdown-addr">timer.local</span>:<span id="irisdown-port">61002</span><br>
+          Irisdown TCP (port configured in bridge)<br>
           GO / PAUSE / TOGGLEPAUSE / RESET / RESET hh:mm:ss<br>
-          JOG &lt;min&gt; / STATE / REMAINING / UPDATES ON / MESSAGE "text"<br><br>
-          IDCT broadcast: UDP port <span id="idct-port">61003</span> → CDEther displays
+          JOG &lt;min&gt; / STATE / REMAINING / UPDATES ON / MESSAGE "text"
         </div>
       </div>
 
@@ -1404,46 +1368,20 @@
     }
 
     function syncSysconfig(cfg) {
-      document.getElementById("cfg-hostname").value        = cfg.hostname        || "timer";
-      document.getElementById("cfg-iface").value           = cfg.iface           || "eth0";
-      document.getElementById("cfg-http-port").value       = cfg.httpPort        || 80;
-      document.getElementById("cfg-tcp-port").value        = cfg.oscTcpPort      || 3001;
-      document.getElementById("cfg-udp-port").value        = cfg.oscUdpPort      || 3001;
-      document.getElementById("cfg-feedback-port").value   = cfg.oscFeedbackPort || 3002;
-      document.getElementById("cfg-irisdown-port").value   = cfg.irisdownPort    || 61002;
-      document.getElementById("cfg-idct-port").value        = cfg.idctPort        || 61003;
-      document.getElementById("cfg-feedback-target").value = cfg.feedbackTarget  || "auto";
+      document.getElementById("cfg-hostname").value  = cfg.hostname || "timer";
+      document.getElementById("cfg-iface").value     = cfg.iface    || "eth0";
+      document.getElementById("cfg-http-port").value = cfg.httpPort || 80;
       updateHostnamePreview();
-      updateOscReference();
     }
 
     function updateHostnamePreview() {
       const name = document.getElementById("cfg-hostname").value || "timer";
       document.getElementById("hostname-preview").textContent = name + ".local";
       document.getElementById("osc-addr").textContent         = name + ".local";
-      document.getElementById("osc-addr2").textContent        = name + ".local";
-      const ir = document.getElementById("irisdown-addr");
-      if (ir) ir.textContent = name + ".local";
     }
 
-    function updateOscReference() {
-      document.getElementById("osc-tcp-port").textContent =
-        document.getElementById("cfg-tcp-port").value || "3001";
-      document.getElementById("osc-fb-port").textContent  =
-        document.getElementById("cfg-feedback-port").value || "3002";
-      const ip = document.getElementById("irisdown-port");
-      if (ip) ip.textContent = document.getElementById("cfg-irisdown-port").value || "61002";
-      const dp = document.getElementById("idct-port");
-      if (dp) dp.textContent = document.getElementById("cfg-idct-port").value || "61003";
-    }
-
-    ["cfg-http-port","cfg-tcp-port","cfg-udp-port","cfg-feedback-port","cfg-irisdown-port","cfg-idct-port"].forEach(id => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.addEventListener("input", () => {
-        document.getElementById("restart-note").style.display = "";
-        updateOscReference();
-      });
+    document.getElementById("cfg-http-port").addEventListener("input", () => {
+      document.getElementById("restart-note").style.display = "";
     });
 
     // Interface hint — show WiFi warning when wlan is entered
@@ -1464,15 +1402,9 @@
       const btn = document.getElementById("btn-save-system");
       btn.disabled = true; btn.textContent = "Saving…";
       const payload = {
-        hostname:        document.getElementById("cfg-hostname").value.trim(),
-        iface:           document.getElementById("cfg-iface").value.trim() || "eth0",
-        httpPort:        parseInt(document.getElementById("cfg-http-port").value, 10),
-        oscTcpPort:      parseInt(document.getElementById("cfg-tcp-port").value, 10),
-        oscUdpPort:      parseInt(document.getElementById("cfg-udp-port").value, 10),
-        oscFeedbackPort: parseInt(document.getElementById("cfg-feedback-port").value, 10),
-        irisdownPort:    parseInt(document.getElementById("cfg-irisdown-port").value, 10),
-        idctPort:        parseInt(document.getElementById("cfg-idct-port").value, 10),
-        feedbackTarget:  document.getElementById("cfg-feedback-target").value.trim() || "auto",
+        hostname: document.getElementById("cfg-hostname").value.trim(),
+        iface:    document.getElementById("cfg-iface").value.trim() || "eth0",
+        httpPort: parseInt(document.getElementById("cfg-http-port").value, 10),
       };
       try {
         const res  = await fetch("/api/system", {
