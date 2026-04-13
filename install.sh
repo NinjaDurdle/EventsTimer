@@ -13,7 +13,7 @@
 
 set -e
 
-VERSION="1.3.1"
+VERSION="1.5.0"
 INSTALL_DIR="/opt/eventstimer"
 
 echo "=== EventsTimer v${VERSION} — Install ==="
@@ -112,6 +112,8 @@ mkdir -p "${INSTALL_DIR}/bridges"
 cp "${SCRIPT_DIR}/server.js"          "${INSTALL_DIR}/server.js"
 cp "${SCRIPT_DIR}/package.json"       "${INSTALL_DIR}/package.json"
 cp "${SCRIPT_DIR}/network-manager.py" "${INSTALL_DIR}/network-manager.py"
+cp "${SCRIPT_DIR}/update.sh"          "${INSTALL_DIR}/update.sh"
+chmod +x "${INSTALL_DIR}/update.sh"
 cp "${SCRIPT_DIR}"/public/*.html "${INSTALL_DIR}/public/"
 
 # Bridges
@@ -132,6 +134,35 @@ fi
 if ls "${SCRIPT_DIR}/public/fonts/"*.woff2 &>/dev/null 2>&1; then
     cp "${SCRIPT_DIR}"/public/fonts/*.woff2 "${INSTALL_DIR}/public/fonts/"
     echo "  Fonts:   copied from package"
+fi
+
+# Git setup — initialise install dir as a repo so future updates work.
+# Detects the remote from the directory this script was run from.
+if [ ! -d "${INSTALL_DIR}/.git" ]; then
+    REPO_URL=$(git -C "$SCRIPT_DIR" remote get-url origin 2>/dev/null || true)
+    if [ -n "$REPO_URL" ]; then
+        echo "  Setting up git for future updates..."
+        git -C "${INSTALL_DIR}" init -b main
+        git -C "${INSTALL_DIR}" remote add origin "$REPO_URL"
+        # Exclude runtime files so git operations never overwrite them
+        printf 'config.json\npresets.json\nbridge-state.json\n' \
+            >> "${INSTALL_DIR}/.git/info/exclude"
+        echo "  Git remote: $REPO_URL"
+    else
+        echo "  Note: run install from a git clone to enable one-click updates"
+    fi
+fi
+
+# Optional update token — required while repo is private.
+# Pass as: EVENTSTIMER_TOKEN=<token> sudo -E bash install.sh
+# Remove /etc/eventstimer-update.token once the repo is made public.
+UPDATE_TOKEN_FILE="/etc/eventstimer-update.token"
+if [ -n "${EVENTSTIMER_TOKEN:-}" ]; then
+    printf '%s' "$EVENTSTIMER_TOKEN" > "$UPDATE_TOKEN_FILE"
+    chmod 600 "$UPDATE_TOKEN_FILE"
+    echo "  Token:   written to $UPDATE_TOKEN_FILE"
+elif [ ! -f "$UPDATE_TOKEN_FILE" ]; then
+    echo "  Token:   not set (needed for private repo — see README)"
 fi
 
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
@@ -329,17 +360,14 @@ echo "  Reboot to start all services:"
 echo "    sudo reboot"
 echo ""
 echo "  Or start the server now (no display kiosk):"
-echo "    sudo systemctl start countdown-timer"
+echo "    sudo systemctl start eventstimer"
 echo ""
 echo "  URLs after reboot:"
 echo "    Control:  http://timer.local/control"
 echo "    Admin:    http://timer.local/admin"
-echo "    Display:  http://timer.local/"
+echo "    Display:  http://timer.local/display"
 echo ""
-echo "  Ports:"
-echo "    HTTP / WebSocket:    80"
-echo "    OSC Control:         3001  (TCP + UDP)"
-echo "    OSC Feedback:        3002  (UDP broadcast)"
-echo "    Irisdown TCP:        61002"
-echo "    IDCT Broadcast:      61003 (UDP, CDEther compatible)"
+echo "  Updates:"
+echo "    Admin page → Developer → Check for Updates"
+echo "    Or: sudo bash ${INSTALL_DIR}/update.sh"
 echo ""

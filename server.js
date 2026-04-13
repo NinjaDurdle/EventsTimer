@@ -1,12 +1,11 @@
 /**
- * server.js — Countdown Timer Server (v1.4.0)
+ * server.js — Countdown Timer Server (v1.5.0)
  *
- * New in v1.4:
- *  - Bridge system: receive, control, and transmit bridge types
- *  - All protocol handling (TCP/UDP control, Irisdown, IDCT, LTC, OSC) moved to bridges
- *  - server.js now provides only HTTP + WebSocket core; everything else is optional
- *  - Single-receive enforcement: only one receive bridge may run at a time
- *  - Bridge auto-restart on unexpected exit
+ * New in v1.5:
+ *  - GET  /api/update/check  — fetch remote, compare versions
+ *  - POST /api/update/apply  — git pull + npm install + restart
+ *  - POST /api/display/launch — open Chromium kiosk on Pi desktop
+ *  - Update token read from /etc/eventstimer-update.token at startup
  */
 
 const http     = require("http");
@@ -15,7 +14,7 @@ const path     = require("path");
 const { exec, execSync } = require("child_process");
 const { WebSocketServer, WebSocket } = require("ws");
 
-const TIMER_VERSION = "1.4.0";
+const TIMER_VERSION = "1.5.0";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -604,6 +603,28 @@ function applyAvahiHostname(hostname) {
   });
 }
 
+// ─── Update Token ─────────────────────────────────────────────────────────────
+// Stored outside the repo so it survives git pulls and is never committed.
+// Remove this file once the repo is public — HTTPS works without auth.
+
+const UPDATE_TOKEN_FILE = "/etc/eventstimer-update.token";
+let updateToken = null;
+try {
+  if (fs.existsSync(UPDATE_TOKEN_FILE))
+    updateToken = fs.readFileSync(UPDATE_TOKEN_FILE, "utf8").trim() || null;
+} catch (e) { console.warn("Could not read update token:", e.message); }
+
+// Build an authenticated remote URL by injecting the token into the HTTPS URL.
+// Falls back to the plain remote URL (works once repo is public).
+function getAuthRemote() {
+  try {
+    const url = execSync("git remote get-url origin", { cwd: __dirname }).toString().trim();
+    if (updateToken && url.startsWith("https://"))
+      return url.replace("https://", `https://x-access-token:${updateToken}@`);
+    return url;
+  } catch (e) { return "origin"; }
+}
+
 // ─── HTTP + API Server ────────────────────────────────────────────────────────
 
 const MIME = {
@@ -675,6 +696,63 @@ function handleApiRequest(req, res) {
   // POST /api/reload — broadcasts a reload command to all connected display pages
   if (req.method === "POST" && req.url === "/api/reload") {
     broadcast({ type: "reload" });
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+    return true;
+  }
+
+  // GET /api/update/check — fetch remote, compare versions
+  if (req.method === "GET" && req.url === "/api/update/check") {
+    const remote = getAuthRemote();
+    exec(`git fetch ${remote}`, { cwd: __dirname }, (err) => {
+      if (err) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "git fetch failed — check network or token" }));
+        return;
+      }
+      exec("git show FETCH_HEAD:package.json", { cwd: __dirname }, (err2, stdout) => {
+        if (err2) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Could not read remote version" }));
+          return;
+        }
+        let latestVersion;
+        try { latestVersion = JSON.parse(stdout).version; }
+        catch {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Could not parse remote package.json" }));
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          currentVersion: TIMER_VERSION,
+          latestVersion,
+          updateAvailable: latestVersion !== TIMER_VERSION,
+        }));
+      });
+    });
+    return true;
+  }
+
+  // POST /api/update/apply — pull latest, reinstall deps, restart
+  if (req.method === "POST" && req.url === "/api/update/apply") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+    const remote = getAuthRemote();
+    exec(`git pull ${remote} main && npm install --omit=dev`, { cwd: __dirname }, (err, _stdout, stderr) => {
+      if (err) { console.error("Update failed:", err.message, stderr); return; }
+      console.log("Update complete — restarting…");
+      setTimeout(() => process.exit(0), 500);
+    });
+    return true;
+  }
+
+  // POST /api/display/launch — open Chromium in kiosk mode on the Pi's desktop
+  if (req.method === "POST" && req.url === "/api/display/launch") {
+    const script = path.join(__dirname, "start-display.sh");
+    exec(`bash "${script}"`, (err) => {
+      if (err) console.warn("Display launch error:", err.message);
+    });
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
     return true;
@@ -793,7 +871,7 @@ wss.on("connection", (ws) => {
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 server.listen(config.httpPort, "0.0.0.0", () => {
-  console.log(`\nCountdown Timer v1.4.0`);
+  console.log(`\nCountdown Timer v1.5.0`);
   console.log(`  HTTP/WS:      port ${config.httpPort}`);
   console.log(`  Display:      http://localhost:${config.httpPort}/display`);
   console.log(`  Control:      http://localhost:${config.httpPort}/control`);

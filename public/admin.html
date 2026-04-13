@@ -505,13 +505,32 @@
       <!-- Dev tools -->
       <div class="card" style="border-color:#2e3347;">
         <h2>Developer</h2>
+
+        <button class="btn-system" id="btn-launch-display">
+          Launch Display (Kiosk)
+        </button>
+        <div style="font-size:0.68rem;color:var(--muted);margin-top:6px;margin-bottom:14px;">
+          Opens Chromium in kiosk mode to the display page. Requires an active desktop session on the Pi.
+        </div>
+
         <button class="btn-system" id="btn-reload-display"
                 style="border-color:var(--warning);color:var(--warning);">
           ⟳ Force Reload Display Page
         </button>
-        <div style="font-size:0.68rem;color:var(--muted);margin-top:6px;">
+        <div style="font-size:0.68rem;color:var(--muted);margin-top:6px;margin-bottom:14px;">
           Reloads all connected display pages immediately. Useful after updating files.
         </div>
+
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn-system" id="btn-check-update" style="margin-bottom:0;">
+            Check for Updates
+          </button>
+          <button class="btn-system" id="btn-apply-update"
+                  style="display:none;margin-bottom:0;border-color:var(--success);color:var(--success);">
+            Apply Update
+          </button>
+        </div>
+        <div id="update-status" style="font-size:0.72rem;color:var(--muted);margin-top:8px;"></div>
       </div>
 
 
@@ -1340,6 +1359,19 @@
     });
 
     // ── Dev tools ─────────────────────────────────────────────────────────────────
+    document.getElementById("btn-launch-display").addEventListener("click", async () => {
+      const btn = document.getElementById("btn-launch-display");
+      btn.disabled = true;
+      btn.textContent = "Launching…";
+      try {
+        await fetch("/api/display/launch", { method: "POST" });
+        btn.textContent = "✓ Launched";
+      } catch (e) {
+        btn.textContent = "Error";
+      }
+      setTimeout(() => { btn.textContent = "Launch Display (Kiosk)"; btn.disabled = false; }, 2000);
+    });
+
     document.getElementById("btn-reload-display").addEventListener("click", async () => {
       const btn = document.getElementById("btn-reload-display");
       btn.disabled = true;
@@ -1354,6 +1386,54 @@
         btn.textContent = "⟳ Force Reload Display Page";
         btn.disabled = false;
       }, 2000);
+    });
+
+    document.getElementById("btn-check-update").addEventListener("click", async () => {
+      const btn       = document.getElementById("btn-check-update");
+      const applyBtn  = document.getElementById("btn-apply-update");
+      const statusEl  = document.getElementById("update-status");
+      btn.disabled = true;
+      btn.textContent = "Checking…";
+      statusEl.textContent = "";
+      applyBtn.style.display = "none";
+      try {
+        const res  = await fetch("/api/update/check");
+        const data = await res.json();
+        if (data.error) {
+          statusEl.textContent = "Error: " + data.error;
+          statusEl.style.color = "var(--danger)";
+        } else if (data.updateAvailable) {
+          statusEl.textContent = `Update available — v${data.latestVersion} (running v${data.currentVersion})`;
+          statusEl.style.color = "var(--warning)";
+          applyBtn.style.display = "";
+        } else {
+          statusEl.textContent = `Up to date (v${data.currentVersion})`;
+          statusEl.style.color = "var(--success)";
+        }
+      } catch (e) {
+        statusEl.textContent = "Check failed — is the Pi online?";
+        statusEl.style.color = "var(--danger)";
+      }
+      btn.disabled = false;
+      btn.textContent = "Check for Updates";
+    });
+
+    document.getElementById("btn-apply-update").addEventListener("click", async () => {
+      const btn      = document.getElementById("btn-apply-update");
+      const statusEl = document.getElementById("update-status");
+      btn.disabled = true;
+      btn.textContent = "Updating…";
+      try {
+        await fetch("/api/update/apply", { method: "POST" });
+        statusEl.textContent = "Update applied — server restarting, page will reconnect…";
+        statusEl.style.color = "var(--muted)";
+        btn.style.display = "none";
+      } catch (e) {
+        statusEl.textContent = "Update failed";
+        statusEl.style.color = "var(--danger)";
+        btn.disabled = false;
+        btn.textContent = "Apply Update";
+      }
     });
 
     // ── System config ──────────────────────────────────────────────────────────

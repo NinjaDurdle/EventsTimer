@@ -1,6 +1,6 @@
 {
   "name": "countdown-timer",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Stage management countdown timer for Raspberry Pi and Debian-based systems",
   "main": "server.js",
   "scripts": {
