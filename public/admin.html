@@ -95,7 +95,11 @@
       display: flex; align-items: center; gap: 6px; margin-top: 4px;
     }
     .h-slider-label { font-size: 0.65rem; color: var(--muted); white-space: nowrap; }
-    .h-slider-wrap input[type=range] { flex: 1; accent-color: var(--accent); }
+    .h-slider-wrap input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+    .h-slider-wrap input[type=range]:hover { accent-color: var(--text); }
+    .h-slider-wrap input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.3); }
+    input[type=range].vertical:hover { accent-color: var(--text); }
+    input[type=range].vertical:hover::-webkit-slider-thumb { transform: scale(1.3); }
     .slider-val {
       font-size: 0.65rem; color: var(--muted); font-family: monospace;
       flex: 0 0 28px; text-align: right;
@@ -153,19 +157,28 @@
       border-radius: 6px; color: var(--text); padding: 6px 9px; font-size: 0.85rem;
     }
     .row input:focus, .row select:focus { outline: none; border-color: var(--accent); }
+    .row input[type="text"]:hover, .row input[type="number"]:hover,
+    .row select:hover { border-color: var(--accent); }
     .row input[type="color"] {
       flex: 0 0 36px; height: 32px; padding: 2px; border-radius: 6px;
       border: 1px solid var(--border); background: var(--surface2); cursor: pointer;
     }
+    .row input[type="color"]:hover { border-color: var(--accent); }
     .row .color-hex {
       flex: 1; background: var(--surface2); border: 1px solid var(--border);
       border-radius: 6px; color: var(--text); padding: 6px 9px;
       font-family: monospace; font-size: 0.85rem;
     }
+    .row .color-hex:hover { border-color: var(--accent); }
     .row input[type="checkbox"] {
       width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer;
     }
-    .row input[type="range"] { flex: 1; accent-color: var(--accent); }
+    .row input[type="range"] {
+      flex: 1; accent-color: var(--accent); cursor: pointer;
+      transition: accent-color 0.15s;
+    }
+    .row input[type="range"]:hover { accent-color: var(--text); }
+    .row input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.3); }
     .range-value {
       flex: 0 0 38px; text-align: right; font-family: monospace;
       font-size: 0.85rem; color: var(--muted);
@@ -210,16 +223,6 @@
     }
     .btn-add-trigger:hover { border-color: var(--accent); color: var(--accent); }
 
-    /* ── End behavior tabs ── */
-    .end-tabs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 10px; }
-    .end-tab {
-      padding: 7px; border-radius: 6px; background: var(--surface2);
-      border: 1px solid var(--border); color: var(--muted); font-size: 0.76rem;
-      font-weight: 600; cursor: pointer; text-align: center; transition: all 0.15s;
-    }
-    .end-tab.active { background: var(--warning); border-color: var(--warning); color: #000; }
-    #next-preset-row { display: none; }
-    #next-preset-row.visible { display: flex; }
     select option { background: var(--surface2); }
 
     /* ── Buttons ── */
@@ -246,6 +249,7 @@
       font-size: 0.85rem; font-family: monospace;
     }
     .port-field input:focus { outline: none; border-color: var(--accent); }
+    .port-field input:hover { border-color: var(--accent); }
     .hostname-row { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
     .hostname-row input {
       flex: 1; background: var(--surface2); border: 1px solid var(--border);
@@ -253,6 +257,7 @@
       font-size: 0.85rem; font-family: monospace;
     }
     .hostname-row input:focus { outline: none; border-color: var(--accent); }
+    .hostname-row input:hover { border-color: var(--accent); }
     .hostname-suffix { font-family: monospace; font-size: 0.85rem; color: var(--muted); }
     .restart-note { font-size: 0.7rem; color: var(--warning); margin-bottom: 8px; }
 
@@ -450,20 +455,6 @@
         </div>
       </div>
 
-      <!-- End behavior -->
-      <div class="card">
-        <h2>End of Countdown</h2>
-        <div class="end-tabs">
-          <div class="end-tab active" data-behavior="hold">Hold at 0</div>
-          <div class="end-tab"       data-behavior="flash">Flash</div>
-          <div class="end-tab"       data-behavior="next">Next Preset</div>
-        </div>
-        <div class="row" id="next-preset-row">
-          <label>Load preset</label>
-          <select id="cfg-next-preset"><option value="">— select —</option></select>
-        </div>
-      </div>
-
       <button class="btn-apply" id="btn-apply">Apply Display Settings</button>
 
       <!-- Timer Status -->
@@ -649,7 +640,6 @@
   <script>
     // ── State ──────────────────────────────────────────────────────────────────
     let ws, latestState = null, latestPresets = [], reconnectDelay = 1000;
-    let currentBehavior = "hold";
     let formTouched = false;
     let posX = 50, posY = 50;  // current position percentages
     let colorTriggers = [];     // [{atMs, textColor, bgColor}]
@@ -674,7 +664,6 @@
           updateStatusCard(msg.payload);
         } else if (msg.type === "presets") {
           latestPresets = msg.payload;
-          populateNextPresetSelect(msg.payload);
         } else if (msg.type === "sysconfig") {
           syncSysconfig(msg.payload);
         } else if (msg.type === "bridges") {
@@ -966,11 +955,6 @@
       // Position
       posX = typeof display.positionX === "number" ? display.positionX : 50;
       posY = typeof display.positionY === "number" ? display.positionY : 50;
-
-      // End behavior
-      setEndBehavior(timer.endBehavior);
-      if (timer.nextPresetId)
-        document.getElementById("cfg-next-preset").value = timer.nextPresetId;
 
       // Message config
       if (msgCfg) {
@@ -1297,29 +1281,6 @@
       document.getElementById("msg-fontsize-val").textContent = this.value + "vw";
     });
 
-    // ── End behavior ───────────────────────────────────────────────────────────
-    function setEndBehavior(behavior) {
-      currentBehavior = behavior;
-      document.querySelectorAll(".end-tab").forEach(t =>
-        t.classList.toggle("active", t.dataset.behavior === behavior));
-      document.getElementById("next-preset-row").classList.toggle("visible", behavior === "next");
-    }
-    document.querySelectorAll(".end-tab").forEach(tab => {
-      tab.addEventListener("click", () => { formTouched = true; setEndBehavior(tab.dataset.behavior); });
-    });
-
-    function populateNextPresetSelect(presets) {
-      const sel = document.getElementById("cfg-next-preset");
-      const cur = sel.value;
-      sel.innerHTML = `<option value="">— select preset —</option>`;
-      presets.forEach(p => {
-        const opt = document.createElement("option");
-        opt.value = p.id; opt.textContent = p.name;
-        sel.appendChild(opt);
-      });
-      if (cur) sel.value = cur;
-    }
-
     // ── Apply display settings ─────────────────────────────────────────────────
     document.getElementById("btn-apply").addEventListener("click", () => {
       const visibleDigits = [0,1,2,3,4,5].map(i =>
@@ -1347,12 +1308,6 @@
           positionY: parseInt(document.getElementById("msg-pos-y").value, 10),
           width:     parseInt(document.getElementById("msg-width").value,  10),
         },
-      }});
-
-      send({ type: "command", payload: {
-        action:       "setEndBehavior",
-        behavior:     currentBehavior,
-        nextPresetId: document.getElementById("cfg-next-preset").value || null,
       }});
 
       formTouched = false;

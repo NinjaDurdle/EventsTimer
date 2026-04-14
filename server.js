@@ -1,5 +1,5 @@
 /**
- * server.js — Countdown Timer Server (v1.5.0)
+ * server.js — Countdown Timer Server (v1.6.0)
  *
  * New in v1.5:
  *  - GET  /api/update/check  — fetch remote, compare versions
@@ -14,7 +14,7 @@ const path     = require("path");
 const { exec, execSync } = require("child_process");
 const { WebSocketServer, WebSocket } = require("ws");
 
-const TIMER_VERSION = "1.5.0";
+const TIMER_VERSION = "1.6.0";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -47,15 +47,16 @@ let config = loadConfig();
 // ─── Timer State ──────────────────────────────────────────────────────────────
 
 let timerState = {
-  mode:         "countdown",
-  running:      false,
-  currentMs:    5 * 60 * 1000,
-  targetMs:     5 * 60 * 1000,
-  endBehavior:  "flash",
-  nextPresetId: null,
-  endReached:       false,
-  message:          "",   // active message text, empty = hidden
-  lastExternalMs:   null, // Date.now() of last setTime in external mode, null if not external
+  mode:           "countdown",
+  running:        false,
+  currentMs:      5 * 60 * 1000,
+  targetMs:       5 * 60 * 1000,
+  endBehavior:    "flash",
+  activePresetId: null, // preset currently loaded into transport
+  nextPresetId:   null, // on-deck preset — auto-advances when active changes, operator can override
+  endReached:     false,
+  message:        "",   // active message text, empty = hidden
+  lastExternalMs: null, // Date.now() of last setTime in external mode, null if not external
 };
 
 // ─── Display Config ───────────────────────────────────────────────────────────
@@ -148,9 +149,13 @@ function handleCountdownEnd() {
   if (timerState.endBehavior === "hold") {
     timerState.running = false;
     stopTick();
-  } else if (timerState.endBehavior === "next" && timerState.nextPresetId) {
+  } else if (timerState.endBehavior === "load" || timerState.endBehavior === "start") {
     const next = presets.find(p => p.id === timerState.nextPresetId);
-    if (next) { applyPreset(next); return; }
+    if (next) {
+      applyPreset(next, timerState.endBehavior === "start");
+      return;
+    }
+    // No on-deck preset — hold at 0
     timerState.running = false;
     stopTick();
   }
@@ -166,8 +171,11 @@ function timeOfDayMs() {
 // ─── State Helpers ────────────────────────────────────────────────────────────
 
 function getFullState() {
+  const activePreset = timerState.activePresetId
+    ? presets.find(p => p.id === timerState.activePresetId)
+    : null;
   return {
-    timer:   { ...timerState },
+    timer:   { ...timerState, activePresetName: activePreset ? activePreset.name : null },
     display: { ...displayConfig },
     message: { ...messageConfig },
   };
@@ -252,9 +260,19 @@ function handleCommand(action, payload = {}) {
       break;
 
     case "setEndBehavior":
-      if (["hold", "flash", "next"].includes(payload.behavior)) {
-        timerState.endBehavior  = payload.behavior;
-        timerState.nextPresetId = payload.nextPresetId || null;
+      if (["hold", "flash", "load", "start"].includes(payload.behavior)) {
+        timerState.endBehavior = payload.behavior;
+        // If the timer already ended, apply the new behavior immediately
+        if (timerState.endReached) {
+          if (payload.behavior === "hold") {
+            timerState.running = false;
+            stopTick();
+          } else if (payload.behavior === "flash") {
+            timerState.running = true;
+            startTick();
+          }
+          // "load" and "start" have no retroactive effect once the timer has ended
+        }
       }
       break;
 
@@ -289,38 +307,86 @@ function handlePreset(action, preset = {}) {
         mode:          preset.mode         || timerState.mode,
         targetMs:      preset.targetMs     ?? timerState.targetMs,
         endBehavior:   preset.endBehavior  || timerState.endBehavior,
-        nextPresetId:  preset.nextPresetId || null,
         displayConfig: preset.displayConfig || { ...displayConfig },
       };
       if (idx >= 0) presets[idx] = entry; else presets.push(entry);
       savePresetsFile(presets);
       break;
     }
+    case "overwrite": {
+      // Save current timer + display state into an existing preset, keeping its id and name
+      const idx = presets.findIndex(p => p.id === preset.id);
+      if (idx === -1) break;
+      presets[idx] = {
+        ...presets[idx],
+        mode:          timerState.mode,
+        targetMs:      timerState.targetMs,
+        endBehavior:   timerState.endBehavior,
+        displayConfig: { ...displayConfig },
+      };
+      savePresetsFile(presets);
+      break;
+    }
+    case "rename": {
+      const idx = presets.findIndex(p => p.id === preset.id);
+      if (idx === -1) break;
+      presets[idx] = { ...presets[idx], name: preset.name || "Untitled" };
+      savePresetsFile(presets);
+      break;
+    }
+    case "reorder": {
+      // preset.ids is the new ordered array of preset IDs
+      if (!Array.isArray(preset.ids)) break;
+      const reordered = preset.ids
+        .map(id => presets.find(p => p.id === id))
+        .filter(Boolean);
+      // Append any presets not included in the reorder (safety net)
+      presets.forEach(p => { if (!reordered.find(r => r.id === p.id)) reordered.push(p); });
+      presets = reordered;
+      // Re-compute nextPresetId if activePresetId is set
+      if (timerState.activePresetId) {
+        const idx = presets.findIndex(p => p.id === timerState.activePresetId);
+        timerState.nextPresetId = (idx !== -1 && idx < presets.length - 1)
+                                ? presets[idx + 1].id : null;
+      }
+      savePresetsFile(presets);
+      break;
+    }
+    case "setActive": {
+      // Move the on-deck pointer without loading the preset
+      timerState.nextPresetId = preset.id || null;
+      break;
+    }
     case "load": {
       const found = presets.find(p => p.id === preset.id);
-      if (found) applyPreset(found);
+      if (found) applyPreset(found, false);
       break;
     }
     case "delete":
+      if (timerState.activePresetId === preset.id) timerState.activePresetId = null;
+      if (timerState.nextPresetId   === preset.id) timerState.nextPresetId   = null;
       presets = presets.filter(p => p.id !== preset.id);
       savePresetsFile(presets);
       break;
   }
 }
 
-function applyPreset(preset) {
-  const wasRunning = timerState.running;
+function applyPreset(preset, autoStart = false) {
   stopTick();
-  timerState.mode          = preset.mode;
-  timerState.targetMs      = preset.targetMs;
-  timerState.currentMs     = preset.mode === "countup" ? 0
-                           : preset.mode === "clock"   ? timeOfDayMs()
-                           : preset.targetMs;
-  timerState.endBehavior   = preset.endBehavior;
-  timerState.nextPresetId  = preset.nextPresetId;
-  timerState.endReached    = false;
+  timerState.mode           = preset.mode;
+  timerState.targetMs       = preset.targetMs;
+  timerState.currentMs      = preset.mode === "countup" ? 0
+                            : preset.mode === "clock"   ? timeOfDayMs()
+                            : preset.targetMs;
+  timerState.endBehavior    = preset.endBehavior;
+  timerState.endReached     = false;
+  timerState.activePresetId = preset.id;
+  // Auto-advance on-deck to the next preset in list
+  const idx = presets.findIndex(p => p.id === preset.id);
+  timerState.nextPresetId   = (idx !== -1 && idx < presets.length - 1)
+                            ? presets[idx + 1].id : null;
   if (preset.displayConfig) Object.assign(displayConfig, preset.displayConfig);
-  if (wasRunning || preset.mode === "clock") {
+  if (autoStart || preset.mode === "clock") {
     timerState.running = true;
     startTick();
   } else {
@@ -871,7 +937,7 @@ wss.on("connection", (ws) => {
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 server.listen(config.httpPort, "0.0.0.0", () => {
-  console.log(`\nCountdown Timer v1.5.0`);
+  console.log(`\nCountdown Timer v1.6.0`);
   console.log(`  HTTP/WS:      port ${config.httpPort}`);
   console.log(`  Display:      http://localhost:${config.httpPort}/display`);
   console.log(`  Control:      http://localhost:${config.httpPort}/control`);

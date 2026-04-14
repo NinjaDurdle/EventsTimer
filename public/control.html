@@ -9,6 +9,7 @@
       --accent: #4f9cf9;
       --danger: #f95f4f;
       --success: #4fc978;
+      --warning: #f9c74f;
       --bg: #0f1117;
       --surface: #1a1d27;
       --surface2: #242838;
@@ -84,10 +85,13 @@
     }
     button:active { transform: scale(0.96); }
     button:disabled { opacity: 0.35; cursor: default; }
-    .btn-play   { background: var(--success); color: #000; }
-    .btn-stop   { background: var(--danger);  color: #fff; }
-    .btn-reset  { background: var(--surface2); color: var(--text);
-                  border: 1px solid var(--border); }
+    .btn-play  { background: var(--success); color: #000; }
+    .btn-stop  { background: var(--danger);  color: #fff; }
+    .btn-reset { background: var(--surface2); color: var(--text);
+                 border: 1px solid var(--border); }
+    .btn-play:hover  { filter: brightness(1.12); }
+    .btn-stop:hover  { filter: brightness(1.12); }
+    .btn-reset:hover { border-color: var(--text); }
     /* Jog buttons */
     .jog-grid {
       display: grid;
@@ -103,6 +107,61 @@
       font-size: 0.82rem;
     }
     .btn-jog:hover { border-color: var(--accent); color: var(--accent); }
+    /* Mode tabs */
+    .mode-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 6px;
+    }
+    .mode-tab {
+      padding: 8px;
+      border-radius: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+    }
+    .mode-tab:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
+    .mode-tab.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #000;
+    }
+    /* End behavior tabs */
+    .end-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 6px;
+    }
+    .end-tab {
+      padding: 8px 4px;
+      border-radius: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+    }
+    .end-tab:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
+    .end-tab.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #000;
+    }
+    .end-hint {
+      margin-top: 8px;
+      font-size: 0.68rem;
+      color: var(--muted);
+      text-align: center;
+      min-height: 1em;
+    }
     /* Time setter */
     .time-inputs {
       display: grid;
@@ -134,29 +193,6 @@
       background: var(--accent);
       color: #000;
     }
-    /* Mode tabs */
-    .mode-tabs {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr 1fr;
-      gap: 6px;
-    }
-    .mode-tab {
-      padding: 8px;
-      border-radius: 6px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      color: var(--muted);
-      font-size: 0.78rem;
-      font-weight: 600;
-      cursor: pointer;
-      text-align: center;
-      transition: all 0.15s;
-    }
-    .mode-tab.active {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #000;
-    }
     /* Message section */
     .message-input {
       width: 100%;
@@ -171,50 +207,180 @@
       margin-bottom: 8px;
     }
     .message-input:focus { outline: none; border-color: var(--accent); }
+    .message-input:hover { border-color: var(--accent); }
     .message-btns {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 8px;
     }
-    .btn-send  { background: var(--accent); color: #000; }
+    .btn-send  { background: var(--accent); color: #000; border: 1px solid var(--accent); }
+    .btn-send.has-message { background: var(--warning); border-color: var(--warning); }
+    .btn-send:hover { filter: brightness(1.12); }
     .btn-clear { background: var(--surface2); border: 1px solid var(--border);
                  color: var(--text); }
     .btn-clear:hover { border-color: var(--danger); color: var(--danger); }
-    /* Active message indicator */
     #msg-active {
       font-size: 0.7rem;
-      color: var(--warning, #f9c74f);
+      color: var(--warning);
       margin-top: 6px;
       min-height: 1em;
     }
+    /* Collapses to nothing when empty; smoothly expands when a message is showing */
+    #msg-active-top {
+      text-align: center;
+      font-size: 0.7rem;
+      color: var(--warning);
+      overflow: hidden;
+      max-height: 0;
+      margin: 0;
+      transition: max-height 0.2s ease, margin 0.2s ease;
+    }
+    #msg-active-top:not(:empty) {
+      max-height: 2em;
+      margin-top: 4px;
+      margin-bottom: 6px;
+    }
     /* Presets */
+    .preset-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .btn-reorder-toggle {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 6px;
+    }
+    .btn-reorder-toggle.active {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
     .preset-list {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
       margin-bottom: 10px;
-      max-height: 220px;
+      max-height: 300px;
       overflow-y: auto;
     }
     .preset-item {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       background: var(--surface2);
       border: 1px solid var(--border);
+      border-left: 3px solid transparent;
       border-radius: 6px;
-      padding: 8px 10px;
+      padding: 8px 6px 8px 10px;
+      user-select: none;
+      touch-action: none;
     }
-    .preset-info { flex: 1; min-width: 0; }
-    .preset-name { font-size: 0.88rem; font-weight: 600; white-space: nowrap;
-                   overflow: hidden; text-overflow: ellipsis; }
-    .preset-meta { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
-    .preset-load { background: var(--surface); border: 1px solid var(--border);
-                   color: var(--text); font-size: 0.75rem; padding: 5px 10px; }
-    .preset-load:hover { border-color: var(--accent); color: var(--accent); }
-    .preset-delete { background: none; border: none; color: var(--danger);
-                     font-size: 1rem; padding: 4px 6px; opacity: 0.6; }
-    .preset-delete:hover { opacity: 1; }
+    .preset-item.preset-active {
+      border-left-color: var(--accent);
+      background: rgba(79, 156, 249, 0.15);
+    }
+    .preset-item.preset-next {
+      border-left-color: var(--warning);
+      background: rgba(249, 199, 79, 0.15);
+    }
+    .preset-item.dragging {
+      opacity: 0.3;
+      border-style: dashed;
+    }
+    /* Drag ghost — floating name label that follows the cursor */
+    .drag-ghost {
+      position: fixed;
+      pointer-events: none;
+      z-index: 1000;
+      background: var(--surface);
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      padding: 7px 14px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text);
+      box-shadow: 0 6px 24px rgba(0,0,0,0.55);
+      white-space: nowrap;
+      max-width: 260px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transform: rotate(1.5deg);
+      display: none;
+    }
+    .drag-ghost.active { display: block; }
+    /* Drop indicator — glowing line between items */
+    .drop-indicator {
+      position: fixed;
+      height: 2px;
+      pointer-events: none;
+      z-index: 999;
+      background: var(--accent);
+      border-radius: 2px;
+      box-shadow: 0 0 8px var(--accent), 0 0 3px var(--accent);
+      display: none;
+    }
+    .drop-indicator.active { display: block; }
+    .drag-handle {
+      color: var(--muted);
+      font-size: 1rem;
+      padding: 2px 4px;
+      cursor: grab;
+      display: none;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .reorder-mode .drag-handle { display: block; }
+    .preset-body {
+      flex: 1;
+      min-width: 0;
+      cursor: pointer;
+      padding: 2px 0;
+    }
+    .reorder-mode .preset-body { cursor: default; }
+    .preset-name {
+      font-size: 0.88rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .preset-meta { font-size: 0.68rem; color: var(--muted); margin-top: 2px; }
+    .preset-rename-input {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--accent);
+      border-radius: 4px;
+      color: var(--text);
+      font-size: 0.88rem;
+      font-weight: 600;
+      padding: 2px 6px;
+    }
+    .preset-rename-input:focus { outline: none; }
+    .preset-actions {
+      display: flex;
+      gap: 1px;
+      flex-shrink: 0;
+    }
+    .preset-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 0.82rem;
+      padding: 5px 7px;
+      border-radius: 5px;
+      transition: color 0.12s, background 0.12s;
+    }
+    .preset-btn:hover { background: var(--surface); }
+    .preset-btn.btn-rename:hover   { color: var(--accent); }
+    .preset-btn.btn-overwrite:hover { color: var(--success); }
+    .preset-btn.btn-load:hover     { color: var(--accent); }
+    .preset-btn.btn-del:hover      { color: var(--danger); }
+    /* Save new preset */
     .save-row { display: flex; gap: 8px; }
     .save-row input {
       flex: 1;
@@ -226,8 +392,12 @@
       font-size: 0.88rem;
     }
     .save-row input:focus { outline: none; border-color: var(--accent); }
-    .btn-save { background: var(--surface2); border: 1px solid var(--border);
-                color: var(--text); padding: 8px 14px; }
+    .btn-save {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 14px;
+    }
     .btn-save:hover { border-color: var(--accent); color: var(--accent); }
     /* Status */
     #status {
@@ -248,6 +418,7 @@
   <div class="card">
     <div id="mode-badge">COUNTDOWN</div>
     <div id="big-timer">00:00:00</div>
+    <div id="msg-active-top"></div>
 
     <div class="mode-tabs" style="margin-bottom:12px;">
       <div class="mode-tab active" data-mode="countdown">Countdown</div>
@@ -262,7 +433,6 @@
       <button class="btn-reset" id="btn-reset">↺ Reset</button>
     </div>
 
-    <!-- Jog controls -->
     <div class="jog-grid">
       <button class="btn-jog" data-delta="5">+5 min</button>
       <button class="btn-jog" data-delta="1">+1 min</button>
@@ -271,7 +441,19 @@
     </div>
   </div>
 
-  <!-- Set time (hidden in clock mode) -->
+  <!-- End behavior (hidden in external mode) -->
+  <div class="card" id="end-behavior-card">
+    <h2>End Behavior</h2>
+    <div class="end-tabs">
+      <div class="end-tab active" data-behavior="hold">Hold</div>
+      <div class="end-tab"       data-behavior="flash">Flash</div>
+      <div class="end-tab"       data-behavior="load">Load Next</div>
+      <div class="end-tab"       data-behavior="start">Start Next</div>
+    </div>
+    <div class="end-hint" id="end-hint"></div>
+  </div>
+
+  <!-- Set time (hidden in clock / external mode) -->
   <div class="card" id="set-time-card">
     <h2>Set Time</h2>
     <div class="time-inputs">
@@ -306,14 +488,17 @@
 
   <!-- Presets -->
   <div class="card">
-    <h2>Presets</h2>
+    <div class="preset-header">
+      <h2 style="margin-bottom:0;">Presets</h2>
+      <button class="btn-reorder-toggle" id="btn-reorder-toggle">⇅ Reorder</button>
+    </div>
     <div class="preset-list" id="preset-list">
       <div style="color:var(--muted);font-size:0.8rem;text-align:center;padding:12px 0;">
         No presets saved yet
       </div>
     </div>
     <div class="save-row">
-      <input type="text" id="preset-name" placeholder="Preset name…" maxlength="40">
+      <input type="text" id="preset-name" placeholder="Name new preset…" maxlength="40">
       <button class="btn-save" id="btn-save-preset">Save</button>
     </div>
   </div>
@@ -321,19 +506,36 @@
   <div id="status">Connecting…</div>
 
   <script>
-    // ── WebSocket ──────────────────────────────────────────────────────────────
+    // ── State ──────────────────────────────────────────────────────────────────
     let ws;
     let latestState   = null;
     let latestPresets = [];
     let reconnectDelay = 1000;
+    let reorderMode   = false;
+    let dragging      = null;
+
+    // Drag ghost and drop indicator — created once, shared across all items
+    const dragGhost = document.createElement("div");
+    dragGhost.className = "drag-ghost";
+    document.body.appendChild(dragGhost);
+
+    const dropIndicator = document.createElement("div");
+    dropIndicator.className = "drop-indicator";
+    document.body.appendChild(dropIndicator);
 
     const statusEl   = document.getElementById("status");
     const btnPlay    = document.getElementById("btn-play");
     const bigTimer   = document.getElementById("big-timer");
     const modeBadge  = document.getElementById("mode-badge");
     const setCard    = document.getElementById("set-time-card");
+    const endCard    = document.getElementById("end-behavior-card");
+    const endHint    = document.getElementById("end-hint");
     const modeTabs   = document.querySelectorAll(".mode-tab");
+    const endTabs    = document.querySelectorAll(".end-tab");
     const msgActive  = document.getElementById("msg-active");
+    const presetList = document.getElementById("preset-list");
+
+    // ── WebSocket ──────────────────────────────────────────────────────────────
 
     function connect() {
       ws = new WebSocket(`ws://${location.host}`);
@@ -372,56 +574,259 @@
       bigTimer.classList.toggle("end", timer.endReached);
 
       modeBadge.textContent = timer.mode === "external" ? "EXTERNAL SOURCE" : timer.mode.toUpperCase();
+      btnPlay.textContent   = timer.running ? "⏸ Pause" : "▶ Start";
 
-      // Play/Pause toggle
-      if (timer.running) {
-        btnPlay.textContent = "⏸ Pause";
-        btnPlay.className   = "btn-play";
-      } else {
-        btnPlay.textContent = timer.mode === "clock" ? "▶ Start" : "▶ Start";
-        btnPlay.className   = "btn-play";
-      }
-
-      // Mode tabs
       modeTabs.forEach(t => t.classList.toggle("active", t.dataset.mode === timer.mode));
+      endTabs.forEach(t  => t.classList.toggle("active", t.dataset.behavior === timer.endBehavior));
 
-      // Hide set-time in clock mode
-      setCard.style.display = timer.mode === "clock" ? "none" : "";
-
-      // Active message indicator
-      if (timer.message && timer.message.trim()) {
-        msgActive.textContent = `● Showing: "${timer.message.slice(0, 40)}${timer.message.length > 40 ? "…" : ""}"`;
+      // End hint — show on-deck preset name for load/start behaviors
+      if (timer.endBehavior === "load" || timer.endBehavior === "start") {
+        const next = latestPresets.find(p => p.id === timer.nextPresetId);
+        endHint.textContent = next
+          ? `On-deck: "${next.name}"`
+          : "Tap a preset below to set it as on-deck";
       } else {
-        msgActive.textContent = "";
+        endHint.textContent = "";
       }
+
+      // Hide cards for modes where they don't apply
+      const isExternal = timer.mode === "external";
+      const isClock    = timer.mode === "clock";
+      endCard.style.display  = isExternal ? "none" : "";
+      setCard.style.display  = (isExternal || isClock) ? "none" : "";
+
+      // Active message indicator + send button state
+      const hasMsg = !!(timer.message && timer.message.trim());
+      const msgText = hasMsg
+        ? `● Showing: "${timer.message.slice(0, 40)}${timer.message.length > 40 ? "…" : ""}"`
+        : "";
+      msgActive.textContent    = msgText;
+      document.getElementById("msg-active-top").textContent = msgText;
+
+      const sendBtn = document.getElementById("btn-send-msg");
+      sendBtn.classList.toggle("has-message", hasMsg);
+      sendBtn.textContent = hasMsg ? "Update" : "Send";
+
+      // Re-render presets so active/on-deck highlights stay current
+      if (latestPresets.length && !presetList.querySelector(".preset-rename-input")) {
+        renderPresets(latestPresets);
+      }
+    }
+
+    function endBehaviorLabel(b) {
+      return { hold: "Hold", flash: "Flash", load: "Load Next", start: "Start Next" }[b] || b;
     }
 
     function renderPresets(presets) {
-      const list = document.getElementById("preset-list");
       if (!presets.length) {
-        list.innerHTML = `<div style="color:var(--muted);font-size:0.8rem;text-align:center;padding:12px 0;">No presets saved yet</div>`;
+        presetList.innerHTML = `<div style="color:var(--muted);font-size:0.8rem;text-align:center;padding:12px 0;">No presets saved yet</div>`;
         return;
       }
-      list.innerHTML = presets.map(p => `
-        <div class="preset-item">
-          <div class="preset-info">
+
+      const activeId = latestState?.timer?.activePresetId;
+      const nextId   = latestState?.timer?.nextPresetId;
+
+      presetList.innerHTML = "";
+
+      presets.forEach(p => {
+        const item = document.createElement("div");
+        item.className  = "preset-item";
+        item.dataset.id = p.id;
+
+        if (p.id === activeId)      item.classList.add("preset-active");
+        else if (p.id === nextId)   item.classList.add("preset-next");
+
+        item.innerHTML = `
+          <span class="drag-handle">≡</span>
+          <div class="preset-body">
             <div class="preset-name">${escHtml(p.name)}</div>
-            <div class="preset-meta">${p.mode} · ${formatMs(p.targetMs)} · end: ${p.endBehavior}</div>
+            <div class="preset-meta">${p.mode} · ${formatMs(p.targetMs)} · ${endBehaviorLabel(p.endBehavior)}</div>
           </div>
-          <button class="preset-load" data-id="${p.id}">Load</button>
-          <button class="preset-delete" data-id="${p.id}" title="Delete">✕</button>
-        </div>`).join("");
+          <div class="preset-actions">
+            <button class="preset-btn btn-rename"    title="Rename">✏</button>
+            <button class="preset-btn btn-overwrite" title="Overwrite with current state">💾</button>
+            <button class="preset-btn btn-load"      title="Load to transport">↑</button>
+            <button class="preset-btn btn-del"       title="Delete">✕</button>
+          </div>`;
+
+        // Tap body → set as on-deck (nextPresetId)
+        item.querySelector(".preset-body").addEventListener("click", () => {
+          if (reorderMode) return;
+          send({ type: "preset", payload: { action: "setActive", preset: { id: p.id } } });
+        });
+
+        item.querySelector(".btn-rename").addEventListener("click", (e) => {
+          e.stopPropagation();
+          startRename(item, p);
+        });
+
+        item.querySelector(".btn-overwrite").addEventListener("click", (e) => {
+          e.stopPropagation();
+          send({ type: "preset", payload: { action: "overwrite", preset: { id: p.id } } });
+        });
+
+        item.querySelector(".btn-load").addEventListener("click", (e) => {
+          e.stopPropagation();
+          send({ type: "preset", payload: { action: "load", preset: { id: p.id } } });
+        });
+
+        item.querySelector(".btn-del").addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (confirm(`Delete preset "${p.name}"?`)) {
+            send({ type: "preset", payload: { action: "delete", preset: { id: p.id } } });
+          }
+        });
+
+        initDrag(item);
+        presetList.appendChild(item);
+      });
     }
+
+    // ── Inline rename ──────────────────────────────────────────────────────────
+
+    function startRename(item, preset) {
+      const nameEl = item.querySelector(".preset-name");
+      const input  = document.createElement("input");
+      input.className = "preset-rename-input";
+      input.value     = preset.name;
+      nameEl.replaceWith(input);
+      input.focus();
+      input.select();
+
+      let committed = false;
+      function commitRename() {
+        if (committed) return;
+        committed = true;
+        const name = input.value.trim() || preset.name;
+        send({ type: "preset", payload: { action: "rename", preset: { id: preset.id, name } } });
+        const restored = document.createElement("div");
+        restored.className   = "preset-name";
+        restored.textContent = name;
+        input.replaceWith(restored);
+        preset.name = name;
+      }
+
+      input.addEventListener("blur", commitRename);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter")  { e.preventDefault(); input.blur(); }
+        if (e.key === "Escape") {
+          committed = true; // prevent blur from committing
+          const restored = document.createElement("div");
+          restored.className   = "preset-name";
+          restored.textContent = preset.name;
+          input.replaceWith(restored);
+        }
+      });
+    }
+
+    // ── Drag-and-drop reorder (pointer events — works on mouse + touch) ────────
+
+    function initDrag(item) {
+      const handle = item.querySelector(".drag-handle");
+      let pendingInsertBeforeId = null;
+
+      function cancelDrag() {
+        if (!dragging || dragging !== item) return;
+        dragGhost.classList.remove("active");
+        dropIndicator.classList.remove("active");
+        item.classList.remove("dragging");
+        dragging = null;
+        pendingInsertBeforeId = null;
+      }
+
+      handle.addEventListener("pointerdown", (e) => {
+        if (!reorderMode) return;
+        e.preventDefault();
+        dragging = item;
+        pendingInsertBeforeId = null;
+        item.setPointerCapture(e.pointerId);
+        item.classList.add("dragging");
+
+        // Ghost shows just the preset name
+        const nameEl = item.querySelector(".preset-name");
+        dragGhost.textContent = nameEl ? nameEl.textContent : "…";
+        dragGhost.style.left = (e.clientX + 14) + "px";
+        dragGhost.style.top  = (e.clientY - 12) + "px";
+        dragGhost.classList.add("active");
+      });
+
+      item.addEventListener("pointermove", (e) => {
+        if (!dragging || dragging !== item) return;
+
+        // Move ghost with pointer
+        dragGhost.style.left = (e.clientX + 14) + "px";
+        dragGhost.style.top  = (e.clientY - 12) + "px";
+
+        // Find the insertion point — don't move the DOM yet, just show the line
+        const siblings = [...presetList.querySelectorAll(".preset-item:not(.dragging)")];
+        let insertBefore = null;
+        let indicatorY   = null;
+
+        for (const sib of siblings) {
+          const r = sib.getBoundingClientRect();
+          if (e.clientY < r.top + r.height / 2) {
+            insertBefore = sib;
+            indicatorY   = r.top;
+            break;
+          }
+          indicatorY = r.bottom;
+        }
+
+        // Edge case: list is empty aside from dragging item
+        if (indicatorY === null) {
+          indicatorY = presetList.getBoundingClientRect().bottom;
+        }
+
+        pendingInsertBeforeId = insertBefore ? insertBefore.dataset.id : null;
+
+        // Position the drop indicator line
+        const listRect = presetList.getBoundingClientRect();
+        dropIndicator.style.top   = (indicatorY - 1) + "px";
+        dropIndicator.style.left  = listRect.left + "px";
+        dropIndicator.style.width = listRect.width + "px";
+        dropIndicator.classList.add("active");
+      });
+
+      item.addEventListener("pointerup", () => {
+        if (!dragging || dragging !== item) return;
+
+        dragGhost.classList.remove("active");
+        dropIndicator.classList.remove("active");
+        item.classList.remove("dragging");
+        dragging = null;
+
+        // Apply the reorder in the DOM
+        if (pendingInsertBeforeId) {
+          const sibling = presetList.querySelector(`[data-id="${pendingInsertBeforeId}"]`);
+          if (sibling) presetList.insertBefore(item, sibling);
+          else         presetList.appendChild(item);
+        } else {
+          presetList.appendChild(item);
+        }
+        pendingInsertBeforeId = null;
+
+        const ids = [...presetList.querySelectorAll(".preset-item")].map(el => el.dataset.id);
+        send({ type: "preset", payload: { action: "reorder", preset: { ids } } });
+      });
+
+      // Clean up if pointer is interrupted (e.g. touch cancelled)
+      item.addEventListener("pointercancel", cancelDrag);
+    }
+
+    // ── Reorder toggle ─────────────────────────────────────────────────────────
+
+    document.getElementById("btn-reorder-toggle").addEventListener("click", () => {
+      reorderMode = !reorderMode;
+      presetList.classList.toggle("reorder-mode", reorderMode);
+      const btn = document.getElementById("btn-reorder-toggle");
+      btn.classList.toggle("active", reorderMode);
+      btn.textContent = reorderMode ? "✓ Done" : "⇅ Reorder";
+    });
 
     // ── Transport ──────────────────────────────────────────────────────────────
 
     btnPlay.addEventListener("click", () => {
       if (latestState && latestState.timer.running) {
-        // Currently running → pause (stop without zeroing)
-        // We send a raw stop that doesn't zero — but our stop now zeroes.
-        // So we use reset to stop cleanly without losing the time.
-        // Actually we want pause: stop tick but keep currentMs.
-        // We'll send a custom "pause" action which server treats as stop-without-zero.
         send({ type: "command", payload: { action: "pause" } });
       } else {
         send({ type: "command", payload: { action: "start" } });
@@ -430,9 +835,7 @@
 
     document.getElementById("btn-stop").addEventListener("click", () => {
       send({ type: "command", payload: { action: "stop" } });
-      // Reset play button immediately without waiting for server round-trip
       btnPlay.textContent = "▶ Start";
-      btnPlay.className   = "btn-play";
     });
 
     document.getElementById("btn-reset").addEventListener("click", () =>
@@ -443,19 +846,16 @@
     document.querySelectorAll(".btn-jog").forEach(btn => {
       btn.addEventListener("click", () => {
         const delta = parseInt(btn.dataset.delta, 10);
-        send({ type: "command", payload: {
-          action: delta > 0 ? "adjust" : "adjust",
-          deltaMs: delta * 60_000
-        }});
+        send({ type: "command", payload: { action: "adjust", deltaMs: delta * 60_000 } });
       });
     });
 
     // ── Set time ───────────────────────────────────────────────────────────────
 
     document.getElementById("btn-set").addEventListener("click", () => {
-      const h  = parseInt(document.getElementById("inp-hours").value,   10) || 0;
-      const m  = parseInt(document.getElementById("inp-minutes").value, 10) || 0;
-      const s  = parseInt(document.getElementById("inp-seconds").value, 10) || 0;
+      const h = parseInt(document.getElementById("inp-hours").value,   10) || 0;
+      const m = parseInt(document.getElementById("inp-minutes").value, 10) || 0;
+      const s = parseInt(document.getElementById("inp-seconds").value, 10) || 0;
       send({ type: "command", payload: { action: "setTime", ms: (h * 3600 + m * 60 + s) * 1000 } });
     });
 
@@ -464,6 +864,13 @@
     modeTabs.forEach(tab => {
       tab.addEventListener("click", () =>
         send({ type: "command", payload: { action: "setMode", mode: tab.dataset.mode } }));
+    });
+
+    // ── End behavior tabs ──────────────────────────────────────────────────────
+
+    endTabs.forEach(tab => {
+      tab.addEventListener("click", () =>
+        send({ type: "command", payload: { action: "setEndBehavior", behavior: tab.dataset.behavior } }));
     });
 
     // ── Message ────────────────────────────────────────────────────────────────
@@ -478,7 +885,7 @@
       send({ type: "command", payload: { action: "setMessage", text: "" } });
     });
 
-    // ── Presets ────────────────────────────────────────────────────────────────
+    // ── Save new preset ────────────────────────────────────────────────────────
 
     document.getElementById("btn-save-preset").addEventListener("click", () => {
       const nameInput = document.getElementById("preset-name");
@@ -487,21 +894,12 @@
       const { timer, display } = latestState;
       send({ type: "preset", payload: { action: "save", preset: {
         name,
-        mode:         timer.mode,
-        targetMs:     timer.targetMs,
-        endBehavior:  timer.endBehavior,
-        nextPresetId: timer.nextPresetId,
+        mode:          timer.mode,
+        targetMs:      timer.targetMs,
+        endBehavior:   timer.endBehavior,
         displayConfig: { ...display },
       }}});
       nameInput.value = "";
-    });
-
-    document.getElementById("preset-list").addEventListener("click", (e) => {
-      const loadBtn   = e.target.closest(".preset-load");
-      const deleteBtn = e.target.closest(".preset-delete");
-      if (loadBtn)   send({ type: "preset", payload: { action: "load",   preset: { id: loadBtn.dataset.id } } });
-      if (deleteBtn && confirm("Delete this preset?"))
-                     send({ type: "preset", payload: { action: "delete", preset: { id: deleteBtn.dataset.id } } });
     });
 
     // ── Helpers ────────────────────────────────────────────────────────────────
