@@ -9,8 +9,10 @@
 
 CHROMIUM_BIN="$(command -v chromium || command -v chromium-browser || echo /usr/bin/chromium)"
 URL="http://localhost/display"
+KIOSK_DIR="/tmp/eventstimer-display"
 COMMON_FLAGS=(
     --kiosk
+    --user-data-dir="$KIOSK_DIR"
     --noerrdialogs
     --disable-infobars
     --disable-session-crashed-bubble
@@ -19,6 +21,12 @@ COMMON_FLAGS=(
     --check-for-update-interval=31536000
     --disable-pinch
 )
+
+# If the kiosk instance is already running, don't open a second one
+if pgrep -f "user-data-dir=${KIOSK_DIR}" > /dev/null 2>&1; then
+    echo "Display kiosk already running"
+    exit 0
+fi
 
 # Resolve XDG_RUNTIME_DIR from our UID if not already set.
 # Under systemd the env var may be absent even though the directory exists.
