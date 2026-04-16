@@ -13,7 +13,7 @@
 
 set -e
 
-VERSION="1.7.4"
+VERSION="1.7.5"
 INSTALL_DIR="/opt/eventstimer"
 
 echo "=== EventsTimer v${VERSION} — Install ==="
@@ -224,12 +224,22 @@ fc-cache -f 2>/dev/null || true
 
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${FONTS_DIR}"
 
-# ── 6. authbind (port 80 without root) ───────────────────────────────────────
+# ── 6. authbind (port 80 without root) + sudoers ─────────────────────────────
 
-echo "[6/8] Configuring authbind..."
+echo "[6/8] Configuring authbind and sudoers..."
 touch /etc/authbind/byport/80
 chmod 500 /etc/authbind/byport/80
 chown "${SERVICE_USER}:${SERVICE_USER}" /etc/authbind/byport/80
+
+# Allow the service user to reboot and shutdown without a password.
+# Required for the Restart Server / Reboot Pi / Shutdown Pi buttons in admin.
+SUDOERS_FILE="/etc/sudoers.d/eventstimer"
+cat > "$SUDOERS_FILE" << SUDOEOF
+# EventsTimer — allow service user to reboot/shutdown from admin UI
+${SERVICE_USER} ALL=(ALL) NOPASSWD: /sbin/reboot, /sbin/shutdown
+SUDOEOF
+chmod 440 "$SUDOERS_FILE"
+echo "  sudoers: ${SERVICE_USER} may reboot and shutdown without password"
 
 # ── 7. systemd services ───────────────────────────────────────────────────────
 

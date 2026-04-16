@@ -523,6 +523,23 @@
           </button>
         </div>
         <div id="update-status" style="font-size:0.72rem;color:var(--muted);margin-top:8px;"></div>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;">
+          <button class="btn-system" id="btn-restart-server" style="margin-bottom:0;">
+            Restart Server
+          </button>
+          <button class="btn-system" id="btn-reboot-pi"
+                  style="margin-bottom:0;border-color:var(--warning);color:var(--warning);">
+            Reboot Pi
+          </button>
+          <button class="btn-system" id="btn-shutdown-pi"
+                  style="margin-bottom:0;border-color:var(--danger);color:var(--danger);">
+            Shutdown Pi
+          </button>
+        </div>
+        <div style="font-size:0.68rem;color:var(--muted);margin-top:6px;">
+          Restart Server reconnects within seconds. Reboot and Shutdown take ~30 s — the page will become unreachable.
+        </div>
       </div>
 
 
@@ -1391,6 +1408,45 @@
         btn.disabled = false;
         btn.textContent = "Apply Update";
       }
+    });
+
+    // ── System power controls ─────────────────────────────────────────────────
+    function makePowerHandler(btnId, endpoint, labels) {
+      document.getElementById(btnId).addEventListener("click", async () => {
+        if (!confirm(labels.confirm)) return;
+        const btn = document.getElementById(btnId);
+        btn.disabled = true;
+        btn.textContent = labels.pending;
+        try {
+          await fetch(endpoint, { method: "POST" });
+          btn.textContent = labels.done;
+        } catch (e) {
+          btn.textContent = labels.error;
+          setTimeout(() => { btn.textContent = labels.idle; btn.disabled = false; }, 2000);
+        }
+      });
+    }
+
+    makePowerHandler("btn-restart-server", "/api/system/restart", {
+      confirm: "Restart the timer server? The page will reconnect automatically.",
+      pending: "Restarting…",
+      done:    "✓ Restarting…",
+      error:   "Error",
+      idle:    "Restart Server",
+    });
+    makePowerHandler("btn-reboot-pi", "/api/system/reboot", {
+      confirm: "Reboot the Pi? The page will be unreachable for ~30 seconds.",
+      pending: "Rebooting…",
+      done:    "✓ Rebooting…",
+      error:   "Error",
+      idle:    "Reboot Pi",
+    });
+    makePowerHandler("btn-shutdown-pi", "/api/system/shutdown", {
+      confirm: "Shut down the Pi? The page will become unreachable. Power off safely before unplugging.",
+      pending: "Shutting down…",
+      done:    "✓ Shutting down…",
+      error:   "Error",
+      idle:    "Shutdown Pi",
     });
 
     // ── System config ──────────────────────────────────────────────────────────

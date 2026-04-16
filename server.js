@@ -14,7 +14,7 @@ const path     = require("path");
 const { exec, execSync } = require("child_process");
 const { WebSocketServer, WebSocket } = require("ws");
 
-const TIMER_VERSION = "1.7.4";
+const TIMER_VERSION = "1.7.5";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -856,6 +856,30 @@ function handleApiRequest(req, res) {
     });
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
+    return true;
+  }
+
+  // POST /api/system/restart — restart the Node service (eventstimer)
+  if (req.method === "POST" && req.url === "/api/system/restart") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+    setTimeout(() => exec("systemctl restart eventstimer"), 300);
+    return true;
+  }
+
+  // POST /api/system/reboot — full Pi reboot
+  if (req.method === "POST" && req.url === "/api/system/reboot") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+    setTimeout(() => exec("sudo reboot"), 300);
+    return true;
+  }
+
+  // POST /api/system/shutdown — clean Pi shutdown
+  if (req.method === "POST" && req.url === "/api/system/shutdown") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+    setTimeout(() => exec("sudo shutdown -h now"), 300);
     return true;
   }
 
