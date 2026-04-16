@@ -29,6 +29,7 @@ Requirements (installed by install.sh):
 """
 
 import os
+import re
 import sys
 import time
 import socket
@@ -99,28 +100,33 @@ def get_mac_bytes(iface):
     except Exception:
         return b"\x00" * 6
 
-def discover_dhcp_server(iface, timeout=DISCOVER_TIMEOUT):
+def discover_dhcp_servers(iface, timeout=DISCOVER_TIMEOUT):
     """
-    Broadcast a DHCP Discover on `iface` and return the server IP if an
-    Offer is received within `timeout` seconds, else return None.
+    Broadcast a DHCP Discover on `iface` and return a list of all server IPs
+    that send an Offer within `timeout` seconds. Drains the full window so that
+    a slow real router isn't missed because a local dnsmasq replied first.
+
+    SO_REUSEPORT is set so this can share port 68 with a running dhclient
+    without an EADDRINUSE error.
     """
     xid = random.randint(0, 0xFFFFFFFF)
     mac = get_mac_bytes(iface)
     packet = build_dhcp_discover(xid, mac)
+    found = []
 
-    # Send socket (UDP broadcast on port 67)
     try:
         send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         send_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        send_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         send_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, iface.encode())
         send_sock.bind(("0.0.0.0", 68))
         send_sock.settimeout(timeout)
         send_sock.sendto(packet, ("255.255.255.255", 67))
     except OSError as e:
         log.warning(f"Could not send DHCP Discover ({e}) — assuming no DHCP server")
-        return None
+        return found
 
-    # Listen for Offer
+    # Drain the full timeout window — collect every Offer that arrives
     deadline = time.time() + timeout
     while time.time() < deadline:
         remaining = deadline - time.time()
@@ -129,16 +135,12 @@ def discover_dhcp_server(iface, timeout=DISCOVER_TIMEOUT):
         try:
             send_sock.settimeout(remaining)
             data, addr = send_sock.recvfrom(1024)
-            # A DHCP Offer is at least 240 bytes, magic cookie at offset 236,
-            # option 53 value 2 somewhere after
             if len(data) >= 240 and data[236:240] == b"\x63\x82\x53\x63":
-                # Check option 53 = 0x02 (Offer) somewhere in options
-                options = data[240:]
-                if b"\x35\x01\x02" in options:
-                    server_ip = addr[0]
-                    log.info(f"DHCP Offer received from {server_ip}")
-                    send_sock.close()
-                    return server_ip
+                if b"\x35\x01\x02" in data[240:]:
+                    ip = addr[0]
+                    if ip not in found:
+                        log.info(f"DHCP Offer received from {ip}")
+                        found.append(ip)
         except socket.timeout:
             break
         except Exception as e:
@@ -146,11 +148,24 @@ def discover_dhcp_server(iface, timeout=DISCOVER_TIMEOUT):
             break
 
     send_sock.close()
-    return None
+    return found
 
 def is_pi_server(ip):
     """Return True if `ip` is in the 192.168.39.x range (another Pi acting as server)."""
     return ip.startswith("192.168.39.")
+
+def get_interface_ip(iface):
+    """Return the current IPv4 address on iface, or None if none is assigned."""
+    result = subprocess.run(
+        ["ip", "-4", "addr", "show", iface],
+        capture_output=True, text=True
+    )
+    m = re.search(r"inet (\d+\.\d+\.\d+\.\d+)/", result.stdout)
+    return m.group(1) if m else None
+
+def is_apipa(ip):
+    """Return True if ip is a link-local (169.254.x.x) address."""
+    return ip is not None and ip.startswith("169.254.")
 
 # ── Network State Management ──────────────────────────────────────────────────
 
@@ -289,6 +304,13 @@ class NetworkManager:
         set_static_ip(self.iface, FALLBACK_CIDR)   # set_static_ip calls ip addr flush first
         start_dnsmasq(self.iface)
 
+    def reacquire_lease(self):
+        """Re-request a DHCP lease while already in client mode (e.g. after lease loss).
+        Skips the mode-change guard in become_client so it always fires."""
+        log.info(f"Re-requesting DHCP lease on {self.iface}")
+        release_static_ip(self.iface)
+        request_dhcp_lease(self.iface)
+
     def become_client(self, server_ip=None):
         if self.mode == "client":
             return
@@ -345,22 +367,26 @@ class NetworkManager:
             server_ip = None
             for attempt in range(1, DISCOVER_ATTEMPTS + 1):
                 log.info(f"DHCP Discover attempt {attempt}/{DISCOVER_ATTEMPTS}…")
-                server_ip = discover_dhcp_server(self.iface, timeout=DISCOVER_TIMEOUT)
-                if server_ip is not None:
-                    log.info(f"Got DHCP Offer from {server_ip} on attempt {attempt}")
+                servers   = discover_dhcp_servers(self.iface, timeout=DISCOVER_TIMEOUT)
+                real      = [s for s in servers if not is_pi_server(s)]
+                pi_svrs   = [s for s in servers if is_pi_server(s)]
+                if real:
+                    server_ip = real[0]
+                    log.info(f"Real DHCP server found ({server_ip}) on attempt {attempt}")
+                    break
+                elif pi_svrs:
+                    server_ip = pi_svrs[0]
+                    log.info(f"Pi DHCP server found ({server_ip}) on attempt {attempt}")
                     break
                 if attempt < DISCOVER_ATTEMPTS:
-                    log.info(f"No response, retrying in 2s…")
+                    log.info("No response, retrying in 2s…")
                     time.sleep(2)
 
             if server_ip is None:
                 log.info(f"No DHCP server found after {DISCOVER_ATTEMPTS} attempts — becoming server")
                 self.become_server()
-            elif is_pi_server(server_ip):
-                log.info(f"Another Pi is DHCP server ({server_ip}) — joining as client")
-                self.become_client(server_ip)
             else:
-                log.info(f"Real DHCP server at {server_ip} — joining as client")
+                log.info(f"Joining network as client (server: {server_ip})")
                 self.become_client(server_ip)
 
         # ── Ongoing monitoring loop ────────────────────────────────────────────
@@ -370,14 +396,45 @@ class NetworkManager:
                 break
 
             if self.mode == "server" and not is_wireless(self.iface):
-                # Check whether a real (non-Pi) DHCP server has appeared.
-                # Filter out our own Offers (192.168.39.x).
-                # WiFi interfaces never enter server mode so skip this check.
-                found = discover_dhcp_server(self.iface, timeout=5)
-                if found and not is_pi_server(found):
-                    log.info(f"Real DHCP server appeared ({found}) — ceding control")
-                    self.become_client(found)
-            # In client mode, DHCP client handles renewals automatically
+                # Collect ALL offers in the window — a local dnsmasq reply at
+                # 192.168.39.x always arrives first; draining ensures a real
+                # router that replies a second later is not missed.
+                servers = discover_dhcp_servers(self.iface, timeout=5)
+                real    = [s for s in servers if not is_pi_server(s)]
+                if real:
+                    log.info(f"Real DHCP server appeared ({real[0]}) — ceding control")
+                    self.become_client(real[0])
+
+            elif self.mode == "client" and not is_wireless(self.iface):
+                # Check that we still hold a valid lease. dhclient handles
+                # normal renewals, but if the cable is moved to a network with
+                # no DHCP server (or the router reboots and the lease expires),
+                # we need to detect that and either re-request or become server.
+                ip = get_interface_ip(self.iface)
+                if ip is None or is_apipa(ip):
+                    log.info(f"DHCP lease lost (IP={ip}) — probing for DHCP server…")
+                    server_ip = None
+                    for attempt in range(1, DISCOVER_ATTEMPTS + 1):
+                        log.info(f"DHCP Discover attempt {attempt}/{DISCOVER_ATTEMPTS}…")
+                        servers = discover_dhcp_servers(self.iface, timeout=DISCOVER_TIMEOUT)
+                        real    = [s for s in servers if not is_pi_server(s)]
+                        pi_svrs = [s for s in servers if is_pi_server(s)]
+                        if real:
+                            server_ip = real[0]
+                            break
+                        elif pi_svrs:
+                            server_ip = pi_svrs[0]
+                            break
+                        if attempt < DISCOVER_ATTEMPTS:
+                            log.info("No response, retrying in 2s…")
+                            time.sleep(2)
+
+                    if server_ip:
+                        log.info(f"DHCP server found ({server_ip}) — re-requesting lease")
+                        self.reacquire_lease()
+                    else:
+                        log.info("No DHCP server found — becoming DHCP server")
+                        self.become_server()
 
 
 if __name__ == "__main__":

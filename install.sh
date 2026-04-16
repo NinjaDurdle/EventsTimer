@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — EventsTimer v1.3.1
+# install.sh — EventsTimer
 # Run once as root on a fresh Raspberry Pi OS / Debian / Ubuntu install:
 #
 #   sudo bash install.sh
@@ -13,7 +13,7 @@
 
 set -e
 
-VERSION="1.7.0"
+VERSION="1.7.1"
 INSTALL_DIR="/opt/eventstimer"
 
 echo "=== EventsTimer v${VERSION} — Install ==="
@@ -115,6 +115,13 @@ cp "${SCRIPT_DIR}/network-manager.py" "${INSTALL_DIR}/network-manager.py"
 cp "${SCRIPT_DIR}/update.sh"          "${INSTALL_DIR}/update.sh"
 chmod +x "${INSTALL_DIR}/update.sh"
 cp "${SCRIPT_DIR}"/public/*.html "${INSTALL_DIR}/public/"
+
+# Icons (SVG — used by control page buttons)
+if [ -d "${SCRIPT_DIR}/public/Icons" ]; then
+    mkdir -p "${INSTALL_DIR}/public/Icons"
+    cp "${SCRIPT_DIR}"/public/Icons/*.svg "${INSTALL_DIR}/public/Icons/"
+    echo "  Icons:   $(ls "${SCRIPT_DIR}/public/Icons/"*.svg | wc -l) SVG(s)"
+fi
 
 # Bridges
 if ls "${SCRIPT_DIR}/bridges/"*.js &>/dev/null 2>&1; then
@@ -231,8 +238,7 @@ echo "[7/8] Installing systemd services..."
 cat > /etc/systemd/system/eventstimer-network.service << EOF
 [Unit]
 Description=EventsTimer — Network Manager
-After=network-online.target
-Wants=network-online.target
+After=network.target
 Before=eventstimer.service
 
 [Service]
@@ -321,6 +327,35 @@ RestartSec=5
 [Install]
 WantedBy=graphical-session.target
 EOF
+
+# ── 7b. Release eth0 from the system DHCP client ─────────────────────────────
+# network-manager.py owns eth0 exclusively — dhcpcd or NetworkManager must not
+# also manage it, or they will fight: re-assigning IPs after our flush, holding
+# port 68, and conflicting with dhclient calls.
+
+NM_IFACE="${TIMER_IFACE:-eth0}"
+
+if systemctl is-active --quiet dhcpcd 2>/dev/null || \
+   systemctl is-enabled --quiet dhcpcd 2>/dev/null; then
+    if ! grep -q "denyinterfaces ${NM_IFACE}" /etc/dhcpcd.conf 2>/dev/null; then
+        printf '\n# EventsTimer: network-manager.py owns this interface\ndenyinterfaces %s\n' \
+            "${NM_IFACE}" >> /etc/dhcpcd.conf
+        echo "  dhcpcd:          configured to ignore ${NM_IFACE}"
+    else
+        echo "  dhcpcd:          already ignoring ${NM_IFACE}"
+    fi
+    systemctl restart dhcpcd 2>/dev/null || true
+fi
+
+if systemctl is-active --quiet NetworkManager 2>/dev/null; then
+    mkdir -p /etc/NetworkManager/conf.d
+    cat > /etc/NetworkManager/conf.d/eventstimer.conf << NMEOF
+[keyfile]
+unmanaged-devices=interface-name:${NM_IFACE}
+NMEOF
+    systemctl reload NetworkManager 2>/dev/null || true
+    echo "  NetworkManager:  configured to ignore ${NM_IFACE}"
+fi
 
 # ── 8. Avahi and final startup ────────────────────────────────────────────────
 
