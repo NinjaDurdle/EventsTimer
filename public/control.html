@@ -1263,6 +1263,14 @@
 
     // ── Message cards ──────────────────────────────────────────────────────────
 
+    // randomId() is unavailable over plain HTTP (non-localhost).
+    // Fall back to a simple random hex string that is collision-resistant enough
+    // for local IDs on a single-operator device.
+    function randomId() {
+      if (typeof crypto !== "undefined" && crypto.randomUUID) return randomId();
+      return "id-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    }
+
     function getMessages() {
       try { return JSON.parse(localStorage.getItem("evt-messages") || "[]"); } catch { return []; }
     }
@@ -1270,7 +1278,7 @@
 
     function renderMessageCards() {
       let msgs = getMessages();
-      if (!msgs.length) { msgs = [{ id: crypto.randomUUID(), text: "" }]; saveMessages(msgs); }
+      if (!msgs.length) { msgs = [{ id: randomId(), text: "" }]; saveMessages(msgs); }
       const list = document.getElementById("message-list");
       list.innerHTML = "";
       msgs.forEach(m => list.appendChild(buildMessageCard(m)));
@@ -1343,7 +1351,7 @@
 
     document.getElementById("btn-add-msg").addEventListener("click", () => {
       const msgs = getMessages();
-      msgs.push({ id: crypto.randomUUID(), text: "" });
+      msgs.push({ id: randomId(), text: "" });
       saveMessages(msgs);
       renderMessageCards();
       const cards = document.querySelectorAll(".msg-card");
