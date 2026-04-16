@@ -25,13 +25,38 @@ if [ -f "$TOKEN_FILE" ]; then
 fi
 
 echo "  Fetching from remote..."
-git pull "$REMOTE" main
+git fetch "$REMOTE" main
+
+# Check before the reset whether network-manager.py is in this update
+NM_UPDATED=false
+if git diff HEAD FETCH_HEAD --name-only 2>/dev/null | grep -q "network-manager.py"; then
+    NM_UPDATED=true
+fi
+
+echo "  Applying update..."
+# Reset all tracked files to the upstream state. Unlike 'git pull' (which uses
+# merge and aborts if local files conflict), reset --hard forcibly overwrites
+# modifications to app files without complaint — correct behaviour for an
+# update script where app files should always come from the repo.
+git reset --hard FETCH_HEAD
+
+# Remove untracked files that would conflict with the updated tree (e.g. a file
+# that was untracked on an old install but is now tracked upstream).
+# node_modules and public/fonts are runtime-generated and not in the repo, so
+# they are excluded. User data files (config.json, presets.json,
+# bridge-state.json) are already protected via .git/info/exclude.
+git clean -fd --exclude=node_modules --exclude='public/fonts'
 
 echo "  Installing dependencies..."
 npm install --omit=dev
 
-echo "  Restarting service..."
+echo "  Restarting services..."
 systemctl restart eventstimer
+
+if [ "$NM_UPDATED" = true ]; then
+    echo "  Network manager updated — restarting (brief network interruption)..."
+    systemctl restart eventstimer-network
+fi
 
 echo ""
 VERSION=$(node -e "console.log(require('./package.json').version)" 2>/dev/null || echo "unknown")
