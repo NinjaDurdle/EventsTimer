@@ -36,17 +36,6 @@
       white-space: nowrap;
     }
 
-    #preset-name {
-      font-family: var(--font, monospace);
-      font-size: calc(var(--font-size, 20) * 0.18vw);
-      color: var(--text-color, #ffffff);
-      letter-spacing: 0.05em;
-      margin-top: 0.5em;
-      opacity: 0.45;
-      white-space: nowrap;
-    }
-    #preset-name:empty { display: none; }
-
     /* Timer digits rendered as individual spans so we can hide columns */
     #timer {
       display: flex;
@@ -165,7 +154,6 @@
       <!-- ones-seconds -->
       <span class="digit-pair" id="dp-os"><span id="d-os">0</span></span>
     </div>
-    <div id="preset-name"></div>
   </div>
 
   <div id="message-block" class="hidden">
@@ -175,11 +163,10 @@
   <div id="offline">⚠ CONNECTION LOST — RECONNECTING…</div>
 
   <script>
-    const root         = document.documentElement;
-    const timerBlock   = document.getElementById("timer-block");
-    const labelEl      = document.getElementById("label");
-    const presetNameEl = document.getElementById("preset-name");
-    const offlineEl    = document.getElementById("offline");
+    const root       = document.documentElement;
+    const timerBlock = document.getElementById("timer-block");
+    const labelEl    = document.getElementById("label");
+    const offlineEl  = document.getElementById("offline");
     const msgBlock     = document.getElementById("message-block");
     const msgText      = document.getElementById("message-text");
 
@@ -271,8 +258,7 @@
       timerBlock.style.top  = py + "%";
 
       // Label
-      labelEl.textContent      = display.label || "";
-      presetNameEl.textContent = timer.activePresetName || "";
+      labelEl.textContent = display.label || "";
 
       // Color triggers (countdown only)
       let activeTextColor = display.textColor;

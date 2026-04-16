@@ -14,7 +14,7 @@ const path     = require("path");
 const { exec, execSync } = require("child_process");
 const { WebSocketServer, WebSocket } = require("ws");
 
-const TIMER_VERSION = "1.6.0";
+const TIMER_VERSION = "1.7.0";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -368,6 +368,38 @@ function handlePreset(action, preset = {}) {
       presets = presets.filter(p => p.id !== preset.id);
       savePresetsFile(presets);
       break;
+
+    case "update": {
+      const idx = presets.findIndex(p => p.id === preset.id);
+      if (idx === -1) break;
+      const isActive = timerState.activePresetId === preset.id;
+
+      if (preset.name !== undefined)
+        presets[idx].name = preset.name || "Untitled";
+
+      if (preset.mode !== undefined && !timerState.running)
+        presets[idx].mode = preset.mode;
+
+      if (preset.endBehavior !== undefined) {
+        presets[idx].endBehavior = preset.endBehavior;
+        if (isActive) timerState.endBehavior = preset.endBehavior;
+      }
+
+      if (preset.targetMs !== undefined) {
+        const oldTarget  = presets[idx].targetMs;
+        const newTarget  = preset.targetMs;
+        presets[idx].targetMs = newTarget;
+        if (isActive) {
+          timerState.targetMs = newTarget;
+          // Preserve elapsed time: remaining = new target − elapsed
+          const elapsed = oldTarget - timerState.currentMs;
+          timerState.currentMs = Math.max(0, newTarget - elapsed);
+        }
+      }
+
+      savePresetsFile(presets);
+      break;
+    }
   }
 }
 
@@ -699,6 +731,9 @@ const MIME = {
   ".css":  "text/css",
   ".json": "application/json",
   ".ico":  "image/x-icon",
+  ".svg":  "image/svg+xml",
+  ".png":  "image/png",
+  ".jpg":  "image/jpeg",
   ".ttf":  "font/ttf",
   ".woff": "font/woff",
   ".woff2":"font/woff2",

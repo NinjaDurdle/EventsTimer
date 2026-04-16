@@ -505,8 +505,9 @@
         </div>
 
         <button class="btn-system" id="btn-reload-display"
-                style="border-color:var(--warning);color:var(--warning);">
-          ⟳ Force Reload Display Page
+                style="border-color:var(--warning);color:var(--warning);display:flex;align-items:center;justify-content:center;gap:8px;">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-miterlimit="10" d="M16.85,20.66c-1.89.97-3.67,1.14-4.5,1.12-4.86-.12-9.82-4.82-9.82-9.82,0-2.46,1.21-4.72,1.32-4.91l.55-.78c-.26-.23-.52-.46-.79-.69-.11-.1-.16-.24-.12-.39.03-.13.13-.25.29-.28l3.64-.86c.22-.05.42.15.36.37l-.84,3.58c-.04.19-.28.26-.43.13l-.87-.77-.12.17c-.37.55-.68,1.14-.89,1.76-.24.7-.47,1.66-.47,2.66,0,4.51,3.67,8.18,8.18,8.18,1.7,0,3.04-.6,3.56-.86l.94,1.38Z"/><path fill="none" stroke="currentColor" stroke-miterlimit="10" d="M8.44,2.9c1.89-.97,3.67-1.14,4.5-1.12,4.86.12,9.82,4.82,9.82,9.82,0,2.46-1.21,4.72-1.32,4.91l-.55.78c.26.23.52.46.79.69.11.1.16.24.12.39-.03.13-.13.25-.29.28l-3.64.86c-.22.05-.42-.15-.36-.37l.84-3.58c.04-.19.28-.26.43-.13l.87.77.12-.17c.37-.55.68-1.14.89-1.76.24-.7.47-1.66.47-2.66,0-4.51-3.67-8.18-8.18-8.18-1.7,0-3.04.6-3.56.86l-.94-1.38Z"/></svg>
+          <span id="btn-reload-label">Force Reload Display Page</span>
         </button>
         <div style="font-size:0.68rem;color:var(--muted);margin-top:6px;margin-bottom:14px;">
           Reloads all connected display pages immediately. Useful after updating files.
@@ -1328,17 +1329,18 @@
     });
 
     document.getElementById("btn-reload-display").addEventListener("click", async () => {
-      const btn = document.getElementById("btn-reload-display");
+      const btn   = document.getElementById("btn-reload-display");
+      const label = document.getElementById("btn-reload-label");
       btn.disabled = true;
-      btn.textContent = "Reloading…";
+      label.textContent = "Reloading…";
       try {
         await fetch("/api/reload", { method: "POST" });
-        btn.textContent = "✓ Reloaded";
+        label.textContent = "✓ Reloaded";
       } catch (e) {
-        btn.textContent = "Error";
+        label.textContent = "Error";
       }
       setTimeout(() => {
-        btn.textContent = "⟳ Force Reload Display Page";
+        label.textContent = "Force Reload Display Page";
         btn.disabled = false;
       }, 2000);
     });
