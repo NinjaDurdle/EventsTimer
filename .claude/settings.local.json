@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import ast; ast.parse\\(open\\('network-manager.py'\\).read\\(\\)\\); print\\('syntax OK'\\)\")",
+      "Bash(bash -n \"d:/Countdown Timer/install.sh\")"
+    ]
+  }
+}

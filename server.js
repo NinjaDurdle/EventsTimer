@@ -14,7 +14,7 @@ const path     = require("path");
 const { exec, execSync } = require("child_process");
 const { WebSocketServer, WebSocket } = require("ws");
 
-const TIMER_VERSION = "1.7.3";
+const TIMER_VERSION = "1.7.4";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 

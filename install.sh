@@ -13,7 +13,7 @@
 
 set -e
 
-VERSION="1.7.3"
+VERSION="1.7.4"
 INSTALL_DIR="/opt/eventstimer"
 
 echo "=== EventsTimer v${VERSION} — Install ==="
@@ -117,10 +117,10 @@ chmod +x "${INSTALL_DIR}/update.sh"
 cp "${SCRIPT_DIR}"/public/*.html "${INSTALL_DIR}/public/"
 
 # Icons (SVG — used by control page buttons)
-if [ -d "${SCRIPT_DIR}/public/Icons" ]; then
-    mkdir -p "${INSTALL_DIR}/public/Icons"
-    cp "${SCRIPT_DIR}"/public/Icons/*.svg "${INSTALL_DIR}/public/Icons/"
-    echo "  Icons:   $(ls "${SCRIPT_DIR}/public/Icons/"*.svg | wc -l) SVG(s)"
+if [ -d "${SCRIPT_DIR}/public/icons" ]; then
+    mkdir -p "${INSTALL_DIR}/public/icons"
+    cp "${SCRIPT_DIR}"/public/icons/*.svg "${INSTALL_DIR}/public/icons/"
+    echo "  Icons:   $(ls "${SCRIPT_DIR}/public/icons/"*.svg | wc -l) SVG(s)"
 fi
 
 # Bridges
