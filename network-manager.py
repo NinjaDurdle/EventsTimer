@@ -154,6 +154,19 @@ def is_pi_server(ip):
     """Return True if `ip` is in the 192.168.39.x range (another Pi acting as server)."""
     return ip.startswith("192.168.39.")
 
+def get_wireless_ifaces():
+    """Return all wireless interfaces that are not the managed ethernet interface."""
+    wifis = []
+    try:
+        for iface in os.listdir("/sys/class/net"):
+            if iface == IFACE:
+                continue
+            if os.path.exists(f"/sys/class/net/{iface}/wireless"):
+                wifis.append(iface)
+    except Exception:
+        pass
+    return wifis
+
 def get_interface_ip(iface):
     """Return the current IPv4 address on iface, or None if none is assigned."""
     result = subprocess.run(
@@ -282,9 +295,10 @@ def request_dhcp_lease(iface):
 
 class NetworkManager:
     def __init__(self):
-        self.mode   = None   # "client" or "server"
-        self.iface  = IFACE
-        self._running = True
+        self.mode      = None   # "client" or "server"
+        self.iface     = IFACE
+        self._running  = True
+        self._wifi_up  = None   # None = unknown; True/False = last applied state
         signal.signal(signal.SIGTERM, self._handle_signal)
         signal.signal(signal.SIGINT,  self._handle_signal)
 
@@ -303,6 +317,28 @@ class NetworkManager:
         self.mode = "server"
         set_static_ip(self.iface, FALLBACK_CIDR)   # set_static_ip calls ip addr flush first
         start_dnsmasq(self.iface)
+
+    def _set_wifi(self, up: bool):
+        """Bring wireless interfaces up or down.
+        When ethernet is connected, WiFi is disabled to prevent asymmetric
+        routing when both interfaces are on the same subnet. WiFi is
+        re-enabled when the ethernet cable is unplugged (carrier lost).
+
+        Guards against redundant calls: if the desired state matches the last
+        applied state the method is a no-op (avoids noisy repeated log entries
+        every POLL_INTERVAL seconds).
+        """
+        if up == self._wifi_up:
+            return
+        wifis = get_wireless_ifaces()
+        if not wifis:
+            self._wifi_up = up
+            return
+        action = "up" if up else "down"
+        for wiface in wifis:
+            run(f"ip link set {wiface} {action}")
+            log.info(f"{'Enabled' if up else 'Disabled'} {wiface} (ethernet carrier {'absent' if up else 'present'})")
+        self._wifi_up = up
 
     def reacquire_lease(self):
         """Re-request a DHCP lease while already in client mode (e.g. after lease loss).
@@ -343,6 +379,13 @@ class NetworkManager:
         # Discover into the void before the cable is even active and incorrectly
         # conclude there is no DHCP server.
         has_carrier = wait_for_carrier(self.iface, timeout=CARRIER_WAIT_SECS)
+
+        # Set initial WiFi state: disable when ethernet is up, enable otherwise.
+        # Only relevant for ethernet interfaces — if IFACE is itself WiFi we don't
+        # touch other interfaces (there's nothing to suppress).
+        if not is_wireless(self.iface):
+            self._set_wifi(not has_carrier)
+
         if not has_carrier:
             if is_wireless(self.iface):
                 # WiFi with no IP means either not configured, wrong password,
@@ -394,6 +437,16 @@ class NetworkManager:
             time.sleep(POLL_INTERVAL)
             if not self._running:
                 break
+
+            # Update WiFi state on every cycle so that plugging/unplugging the
+            # ethernet cable re-enables or re-disables WiFi within POLL_INTERVAL.
+            if not is_wireless(self.iface):
+                try:
+                    with open(f"/sys/class/net/{self.iface}/carrier") as f:
+                        carrier = f.read().strip() == "1"
+                except OSError:
+                    carrier = False
+                self._set_wifi(not carrier)
 
             if self.mode == "server" and not is_wireless(self.iface):
                 # Collect ALL offers in the window — a local dnsmasq reply at
