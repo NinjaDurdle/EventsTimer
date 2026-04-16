@@ -282,28 +282,7 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
-# Kiosk display wrapper — detects X11 vs Wayland at runtime
-cat > "${INSTALL_DIR}/start-display.sh" << 'WRAPPER'
-#!/usr/bin/env bash
-CHROMIUM_BIN="$(command -v chromium || command -v chromium-browser || echo /usr/bin/chromium)"
-URL="http://localhost/display"
-COMMON_FLAGS=(--kiosk --noerrdialogs --disable-infobars
-    --disable-session-crashed-bubble --disable-restore-session-state
-    --no-first-run --check-for-update-interval=31536000 --disable-pinch)
-
-SESSION="${XDG_SESSION_TYPE:-}"
-[ -z "$SESSION" ] && [ -n "$WAYLAND_DISPLAY" ] && SESSION="wayland"
-[ -z "$SESSION" ] && [ -n "$DISPLAY"          ] && SESSION="x11"
-
-if [ "$SESSION" = "wayland" ]; then
-    exec "$CHROMIUM_BIN" "${COMMON_FLAGS[@]}" \
-        --ozone-platform=wayland --enable-features=UseOzonePlatform "$URL"
-else
-    export DISPLAY="${DISPLAY:-:0}"
-    exec "$CHROMIUM_BIN" "${COMMON_FLAGS[@]}" --display="${DISPLAY}" "$URL"
-fi
-WRAPPER
-
+cp "${SCRIPT_DIR}/start-display.sh" "${INSTALL_DIR}/start-display.sh"
 chmod +x "${INSTALL_DIR}/start-display.sh"
 chown "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}/start-display.sh"
 
