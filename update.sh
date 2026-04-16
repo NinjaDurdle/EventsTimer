@@ -50,6 +50,21 @@ git clean -fd --exclude=node_modules --exclude='public/fonts'
 echo "  Installing dependencies..."
 npm install --omit=dev
 
+# ── One-time system config (idempotent) ───────────────────────────────────────
+# Applies any system-level setup that install.sh would normally handle but that
+# may be missing on Pis installed before a given version. Safe to run repeatedly.
+
+# sudoers entry for reboot/shutdown buttons (added in v1.7.5)
+SUDOERS_FILE="/etc/sudoers.d/eventstimer"
+SERVICE_USER=$(stat -c '%U' "$INSTALL_DIR/server.js")
+SUDOERS_LINE="${SERVICE_USER} ALL=(ALL) NOPASSWD: /sbin/reboot, /sbin/shutdown"
+if [ ! -f "$SUDOERS_FILE" ] || ! grep -qF "$SUDOERS_LINE" "$SUDOERS_FILE" 2>/dev/null; then
+    printf '# EventsTimer — allow service user to reboot/shutdown from admin UI\n%s\n' \
+        "$SUDOERS_LINE" > "$SUDOERS_FILE"
+    chmod 440 "$SUDOERS_FILE"
+    echo "  sudoers: added reboot/shutdown permission for ${SERVICE_USER}"
+fi
+
 echo "  Restarting services..."
 systemctl restart eventstimer
 
