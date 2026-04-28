@@ -14,7 +14,7 @@ const path     = require("path");
 const { exec, execSync } = require("child_process");
 const { WebSocketServer, WebSocket } = require("ws");
 
-const TIMER_VERSION = "1.7.6";
+const TIMER_VERSION = "1.8.0";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -27,6 +27,7 @@ const CONFIG_DEFAULTS = {
   httpPort:        80,
   hostname:        "timer",
   iface:           "eth0",
+  definedColors:   ["#4fc978", "#f9c74f", "#f95f4f"],
 };
 
 function loadConfig() {
@@ -44,6 +45,13 @@ function saveConfig(cfg) {
 
 let config = loadConfig();
 
+// Ensure definedColors is always a valid 3-element array, both in memory and persisted
+if (!Array.isArray(config.definedColors) || config.definedColors.length !== 3) {
+  config.definedColors = CONFIG_DEFAULTS.definedColors;
+  saveConfig(config);
+}
+let definedColors = config.definedColors;
+
 // ─── Timer State ──────────────────────────────────────────────────────────────
 
 let timerState = {
@@ -54,10 +62,16 @@ let timerState = {
   endBehavior:    "flash",
   activePresetId: null, // preset currently loaded into transport
   nextPresetId:   null, // on-deck preset — auto-advances when active changes, operator can override
-  endReached:     false,
-  message:        "",   // active message text, empty = hidden
-  lastExternalMs: null, // Date.now() of last setTime in external mode, null if not external
+  endReached:       false,
+  message:          "",   // active message text, empty = hidden
+  lastExternalMs:   null, // Date.now() of last setTime in external mode, null if not external
+  activeColorSlot:  null, // 1|2|3 — from active preset; null = use default display colors
+  messageColorSlot: null, // 1|2|3 — from setMessage command; null = use default message colors
 };
+
+// Background parent state — set when a child timer is foreground in a nested session.
+// The parent clock ticks independently; the foreground child is tracked via timerState.
+let backgroundParent = null; // { id, currentMs, targetMs, endReached }
 
 // ─── Display Config ───────────────────────────────────────────────────────────
 // visibleDigits: array of 6 booleans [tensHours, onesHours, tensMins, onesMins, tensSecs, onesSecs]
@@ -96,8 +110,15 @@ let messageConfig = {
 
 function loadPresets() {
   try {
-    if (fs.existsSync(PRESETS_FILE))
-      return JSON.parse(fs.readFileSync(PRESETS_FILE, "utf8"));
+    if (fs.existsSync(PRESETS_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(PRESETS_FILE, "utf8"));
+      return raw.map(p => ({
+        children:           [],
+        parentId:           null,
+        useParentRemaining: false,
+        ...p,
+      }));
+    }
   } catch (e) { console.warn("Could not load presets.json:", e.message); }
   return [];
 }
@@ -121,6 +142,14 @@ function startTick() {
 }
 
 function stopTick() {
+  // When a background parent is active, the tick loop must keep running for it.
+  // Only actually stop if nothing needs the loop.
+  if (backgroundParent) return;
+  if (tickInterval) { clearInterval(tickInterval); tickInterval = null; }
+  lastTickTime = null;
+}
+
+function hardStopTick() {
   if (tickInterval) { clearInterval(tickInterval); tickInterval = null; }
   lastTickTime = null;
 }
@@ -130,15 +159,24 @@ function tick() {
   const delta = now - lastTickTime;
   lastTickTime = now;
 
-  if (timerState.mode === "clock") {
-    timerState.currentMs = timeOfDayMs();
-  } else if (timerState.mode === "countup") {
-    timerState.currentMs += delta;
-  } else {
-    if (!timerState.endReached) {
-      timerState.currentMs = Math.max(0, timerState.currentMs - delta);
-      if (timerState.currentMs === 0) handleCountdownEnd();
+  // Foreground timer — only advances while running
+  if (timerState.running) {
+    if (timerState.mode === "clock") {
+      timerState.currentMs = timeOfDayMs();
+    } else if (timerState.mode === "countup") {
+      timerState.currentMs += delta;
+    } else {
+      if (!timerState.endReached) {
+        timerState.currentMs = Math.max(0, timerState.currentMs - delta);
+        if (timerState.currentMs === 0) handleCountdownEnd();
+      }
     }
+  }
+
+  // Background parent — always ticks while set (independent of foreground running state)
+  if (backgroundParent && !backgroundParent.endReached) {
+    backgroundParent.currentMs = Math.max(0, backgroundParent.currentMs - delta);
+    if (backgroundParent.currentMs === 0) backgroundParent.endReached = true;
   }
 
   broadcast({ type: "state", payload: getFullState() });
@@ -148,14 +186,33 @@ function handleCountdownEnd() {
   timerState.endReached = true;
   if (timerState.endBehavior === "hold") {
     timerState.running = false;
-    stopTick();
+    stopTick(); // no-op when backgroundParent is set — parent keeps loop alive
   } else if (timerState.endBehavior === "load" || timerState.endBehavior === "start") {
-    const next = presets.find(p => p.id === timerState.nextPresetId);
-    if (next) {
-      applyPreset(next, timerState.endBehavior === "start");
+    const autoStart = timerState.endBehavior === "start";
+    // In nested context — advance to next sibling child instead of using nextPresetId
+    if (backgroundParent) {
+      const parentPreset = presets.find(p => p.id === backgroundParent.id);
+      if (parentPreset && Array.isArray(parentPreset.children)) {
+        const idx = parentPreset.children.indexOf(timerState.activePresetId);
+        if (idx >= 0 && idx < parentPreset.children.length - 1) {
+          const nextChild = presets.find(p => p.id === parentPreset.children[idx + 1]);
+          if (nextChild) {
+            fireChild(nextChild);
+            if (autoStart) { timerState.running = true; /* loop already running */ }
+            return;
+          }
+        }
+      }
+      // No next sibling — hold at 0
+      timerState.running = false;
       return;
     }
-    // No on-deck preset — hold at 0
+    // Normal single-timer behavior
+    const next = presets.find(p => p.id === timerState.nextPresetId);
+    if (next) {
+      applyPreset(next, autoStart);
+      return;
+    }
     timerState.running = false;
     stopTick();
   }
@@ -170,14 +227,48 @@ function timeOfDayMs() {
 
 // ─── State Helpers ────────────────────────────────────────────────────────────
 
+// Load a child preset as the foreground timer without touching backgroundParent.
+// If useParentRemaining, snaps targetMs to the parent's currentMs at call time.
+function fireChild(child) {
+  const targetMs = (child.useParentRemaining && backgroundParent)
+    ? backgroundParent.currentMs
+    : child.targetMs;
+  timerState.mode            = child.mode || "countdown";
+  timerState.targetMs        = targetMs;
+  timerState.currentMs       = child.mode === "countup" ? 0 : targetMs;
+  timerState.endBehavior     = child.endBehavior;
+  timerState.endReached      = false;
+  timerState.running         = false;
+  timerState.activePresetId  = child.id;
+  timerState.nextPresetId    = null; // children don't use the flat nextPresetId
+  timerState.activeColorSlot = child.colorSlot ?? null;
+  if (child.displayConfig) Object.assign(displayConfig, child.displayConfig);
+}
+
 function getFullState() {
   const activePreset = timerState.activePresetId
     ? presets.find(p => p.id === timerState.activePresetId)
     : null;
+
+  let parentContext = null;
+  if (backgroundParent) {
+    const parentPreset = presets.find(p => p.id === backgroundParent.id);
+    parentContext = {
+      id:        backgroundParent.id,
+      name:      parentPreset ? parentPreset.name : "Session",
+      currentMs: backgroundParent.currentMs,
+      targetMs:  backgroundParent.targetMs,
+      endReached: backgroundParent.endReached,
+      childIds:  parentPreset ? (parentPreset.children || []) : [],
+    };
+  }
+
   return {
-    timer:   { ...timerState, activePresetName: activePreset ? activePreset.name : null },
-    display: { ...displayConfig },
-    message: { ...messageConfig },
+    timer:         { ...timerState, activePresetName: activePreset ? activePreset.name : null },
+    display:       { ...displayConfig },
+    message:       { ...messageConfig },
+    definedColors: [...definedColors],
+    parentContext,
   };
 }
 
@@ -290,9 +381,47 @@ function handleCommand(action, payload = {}) {
     }
 
     case "setMessage":
-      // payload.text — set or clear the message
-      timerState.message = (payload.text || "").slice(0, 200);
+      timerState.message          = (payload.text || "").slice(0, 200);
+      timerState.messageColorSlot = payload.colorSlot || null;
       break;
+
+    case "fireNextChild": {
+      if (!backgroundParent) break;
+      const parentPreset = presets.find(p => p.id === backgroundParent.id);
+      if (!parentPreset || !Array.isArray(parentPreset.children)) break;
+      const childIds  = parentPreset.children;
+      const curIdx    = childIds.indexOf(timerState.activePresetId);
+      if (curIdx < 0 || curIdx >= childIds.length - 1) break;
+      const nextChild = presets.find(p => p.id === childIds[curIdx + 1]);
+      if (nextChild) { fireChild(nextChild); timerState.running = true; }
+      break;
+    }
+
+    case "exitChildContext": {
+      if (!backgroundParent) break;
+      const exitParentId     = backgroundParent.id;
+      const exitParentPreset = presets.find(p => p.id === exitParentId);
+      backgroundParent = null;
+      hardStopTick();
+      // Restore parent as the foreground timer (stopped at full time)
+      if (exitParentPreset) {
+        timerState.mode           = exitParentPreset.mode || "countdown";
+        timerState.targetMs       = exitParentPreset.targetMs;
+        timerState.currentMs      = exitParentPreset.targetMs;
+        timerState.endBehavior    = exitParentPreset.endBehavior;
+        timerState.endReached     = false;
+        timerState.running        = false;
+        timerState.activePresetId = exitParentPreset.id;
+        timerState.activeColorSlot = exitParentPreset.colorSlot ?? null;
+        const tl  = presets.filter(p => !p.parentId);
+        const idx = tl.findIndex(p => p.id === exitParentPreset.id);
+        timerState.nextPresetId = (idx !== -1 && idx < tl.length - 1) ? tl[idx + 1].id : null;
+        if (exitParentPreset.displayConfig) Object.assign(displayConfig, exitParentPreset.displayConfig);
+      } else {
+        timerState.activePresetId = null;
+      }
+      break;
+    }
   }
 }
 
@@ -303,13 +432,25 @@ function handlePreset(action, preset = {}) {
       const idx = presets.findIndex(p => p.id === id);
       const entry = {
         id,
-        name:          preset.name         || "Untitled",
-        mode:          preset.mode         || timerState.mode,
-        targetMs:      preset.targetMs     ?? timerState.targetMs,
-        endBehavior:   preset.endBehavior  || timerState.endBehavior,
-        displayConfig: preset.displayConfig || { ...displayConfig },
+        name:               preset.name               || "Untitled",
+        mode:               preset.mode               || timerState.mode,
+        targetMs:           preset.targetMs            ?? timerState.targetMs,
+        endBehavior:        preset.endBehavior         || timerState.endBehavior,
+        displayConfig:      preset.displayConfig       || { ...displayConfig },
+        colorSlot:          preset.colorSlot           ?? null,
+        children:           preset.children            || [],
+        parentId:           preset.parentId            ?? null,
+        useParentRemaining: preset.useParentRemaining  ?? false,
       };
       if (idx >= 0) presets[idx] = entry; else presets.push(entry);
+      // If saving a child, auto-link into parent's children array
+      if (entry.parentId) {
+        const parentIdx = presets.findIndex(p => p.id === entry.parentId);
+        if (parentIdx !== -1) {
+          if (!Array.isArray(presets[parentIdx].children)) presets[parentIdx].children = [];
+          if (!presets[parentIdx].children.includes(id)) presets[parentIdx].children.push(id);
+        }
+      }
       savePresetsFile(presets);
       break;
     }
@@ -343,11 +484,11 @@ function handlePreset(action, preset = {}) {
       // Append any presets not included in the reorder (safety net)
       presets.forEach(p => { if (!reordered.find(r => r.id === p.id)) reordered.push(p); });
       presets = reordered;
-      // Re-compute nextPresetId if activePresetId is set
-      if (timerState.activePresetId) {
-        const idx = presets.findIndex(p => p.id === timerState.activePresetId);
-        timerState.nextPresetId = (idx !== -1 && idx < presets.length - 1)
-                                ? presets[idx + 1].id : null;
+      // Re-compute nextPresetId from top-level order
+      if (timerState.activePresetId && !backgroundParent) {
+        const tl  = presets.filter(p => !p.parentId);
+        const idx = tl.findIndex(p => p.id === timerState.activePresetId);
+        timerState.nextPresetId = (idx !== -1 && idx < tl.length - 1) ? tl[idx + 1].id : null;
       }
       savePresetsFile(presets);
       break;
@@ -359,15 +500,52 @@ function handlePreset(action, preset = {}) {
     }
     case "load": {
       const found = presets.find(p => p.id === preset.id);
-      if (found) applyPreset(found, false);
+      if (!found) break;
+      if (found.parentId) {
+        // Child preset — set up parent context if needed, then fire child
+        const parent = presets.find(p => p.id === found.parentId);
+        if (parent) {
+          if (!backgroundParent || backgroundParent.id !== found.parentId) {
+            hardStopTick();
+            backgroundParent = {
+              id:        parent.id,
+              currentMs: parent.targetMs,
+              targetMs:  parent.targetMs,
+              endReached: false,
+            };
+          }
+          fireChild(found);
+        }
+      } else {
+        applyPreset(found, false);
+      }
       break;
     }
-    case "delete":
+    case "delete": {
+      const toDelete = presets.find(p => p.id === preset.id);
+      if (toDelete) {
+        // Orphan children if deleting a parent
+        (toDelete.children || []).forEach(childId => {
+          const child = presets.find(p => p.id === childId);
+          if (child) child.parentId = null;
+        });
+        // Remove from parent's children array if deleting a child
+        if (toDelete.parentId) {
+          const parent = presets.find(p => p.id === toDelete.parentId);
+          if (parent) parent.children = (parent.children || []).filter(id => id !== preset.id);
+        }
+        // Exit nested context if active parent or child is deleted
+        if (backgroundParent && (backgroundParent.id === preset.id || timerState.activePresetId === preset.id)) {
+          backgroundParent = null;
+          hardStopTick();
+        }
+      }
       if (timerState.activePresetId === preset.id) timerState.activePresetId = null;
       if (timerState.nextPresetId   === preset.id) timerState.nextPresetId   = null;
       presets = presets.filter(p => p.id !== preset.id);
       savePresetsFile(presets);
       break;
+    }
 
     case "update": {
       const idx = presets.findIndex(p => p.id === preset.id);
@@ -397,6 +575,40 @@ function handlePreset(action, preset = {}) {
         }
       }
 
+      if (preset.colorSlot !== undefined) {
+        presets[idx].colorSlot = preset.colorSlot ?? null;
+        if (isActive) timerState.activeColorSlot = preset.colorSlot ?? null;
+      }
+
+      if (preset.useParentRemaining !== undefined) {
+        presets[idx].useParentRemaining = !!preset.useParentRemaining;
+      }
+
+      savePresetsFile(presets);
+      break;
+    }
+
+    case "addChild": {
+      // preset.parentId = parent, preset.childId = child to adopt
+      const parentIdx = presets.findIndex(p => p.id === preset.parentId);
+      const childIdx  = presets.findIndex(p => p.id === preset.childId);
+      if (parentIdx === -1 || childIdx === -1) break;
+      if (!Array.isArray(presets[parentIdx].children)) presets[parentIdx].children = [];
+      if (!presets[parentIdx].children.includes(preset.childId)) {
+        presets[parentIdx].children.push(preset.childId);
+      }
+      presets[childIdx].parentId = preset.parentId;
+      savePresetsFile(presets);
+      break;
+    }
+
+    case "removeChild": {
+      const parentIdx = presets.findIndex(p => p.id === preset.parentId);
+      const childIdx  = presets.findIndex(p => p.id === preset.childId);
+      if (parentIdx !== -1) {
+        presets[parentIdx].children = (presets[parentIdx].children || []).filter(id => id !== preset.childId);
+      }
+      if (childIdx !== -1) presets[childIdx].parentId = null;
       savePresetsFile(presets);
       break;
     }
@@ -404,19 +616,47 @@ function handlePreset(action, preset = {}) {
 }
 
 function applyPreset(preset, autoStart = false) {
-  stopTick();
+  // Parent preset with children → enter nested context
+  if (Array.isArray(preset.children) && preset.children.length > 0) {
+    // Already in this session — don't reset the clock, just re-fire the first child
+    const alreadyInSession = backgroundParent && backgroundParent.id === preset.id;
+    if (!alreadyInSession) {
+      hardStopTick();
+      backgroundParent = {
+        id:        preset.id,
+        currentMs: preset.targetMs,
+        targetMs:  preset.targetMs,
+        endReached: false,
+      };
+    }
+    const firstChild = presets.find(p => p.id === preset.children[0]);
+    if (firstChild) {
+      fireChild(firstChild);
+      if (autoStart) {
+        timerState.running = true;
+        startTick();
+      }
+    }
+    return;
+  }
+
+  // Normal single-timer load — exit any existing nested context
+  backgroundParent = null;
+  hardStopTick();
   timerState.mode           = preset.mode;
   timerState.targetMs       = preset.targetMs;
   timerState.currentMs      = preset.mode === "countup" ? 0
                             : preset.mode === "clock"   ? timeOfDayMs()
                             : preset.targetMs;
   timerState.endBehavior    = preset.endBehavior;
-  timerState.endReached     = false;
-  timerState.activePresetId = preset.id;
-  // Auto-advance on-deck to the next preset in list
-  const idx = presets.findIndex(p => p.id === preset.id);
-  timerState.nextPresetId   = (idx !== -1 && idx < presets.length - 1)
-                            ? presets[idx + 1].id : null;
+  timerState.endReached      = false;
+  timerState.activePresetId  = preset.id;
+  timerState.activeColorSlot = preset.colorSlot ?? null;
+  // Auto-advance on-deck to the next top-level preset
+  const topLevel = presets.filter(p => !p.parentId);
+  const idx      = topLevel.findIndex(p => p.id === preset.id);
+  timerState.nextPresetId   = (idx !== -1 && idx < topLevel.length - 1)
+                            ? topLevel[idx + 1].id : null;
   if (preset.displayConfig) Object.assign(displayConfig, preset.displayConfig);
   if (autoStart || preset.mode === "clock") {
     timerState.running = true;
@@ -454,6 +694,13 @@ function handleConfig(updates) {
     for (const key of msgKeys) {
       if (key in updates.messageConfig) messageConfig[key] = updates.messageConfig[key];
     }
+  }
+
+  // Defined Colors — persist to config.json so they survive server restarts
+  if (Array.isArray(updates.definedColors) && updates.definedColors.length === 3) {
+    definedColors = updates.definedColors.map(c => (typeof c === "string" ? c : "#ffffff"));
+    config.definedColors = definedColors;
+    saveConfig(config);
   }
 }
 
@@ -996,7 +1243,7 @@ wss.on("connection", (ws) => {
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 server.listen(config.httpPort, "0.0.0.0", () => {
-  console.log(`\nCountdown Timer v1.6.0`);
+  console.log(`\nCountdown Timer v${TIMER_VERSION}`);
   console.log(`  HTTP/WS:      port ${config.httpPort}`);
   console.log(`  Display:      http://localhost:${config.httpPort}/display`);
   console.log(`  Control:      http://localhost:${config.httpPort}/control`);

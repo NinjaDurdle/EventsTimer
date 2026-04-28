@@ -215,7 +215,7 @@
 
     // ── State Application ──────────────────────────────────────────────────────
 
-    function applyState({ timer, display, message: msgCfg }) {
+    function applyState({ timer, display, message: msgCfg, definedColors }) {
       // CSS variables
       root.style.setProperty("--font",        display.font);
       root.style.setProperty("--font-size",   display.fontSize);
@@ -225,9 +225,15 @@
 
       // Message CSS variables + position
       if (msgCfg) {
-        root.style.setProperty("--msg-font",       msgCfg.font);
-        root.style.setProperty("--msg-font-size",  msgCfg.fontSize);
-        root.style.setProperty("--msg-text-color", msgCfg.textColor);
+        root.style.setProperty("--msg-font",      msgCfg.font);
+        root.style.setProperty("--msg-font-size", msgCfg.fontSize);
+
+        // Message text color — override with defined color slot if assigned
+        let msgTextColor = msgCfg.textColor;
+        if (timer.messageColorSlot && Array.isArray(definedColors)) {
+          msgTextColor = definedColors[timer.messageColorSlot - 1] || msgTextColor;
+        }
+        root.style.setProperty("--msg-text-color", msgTextColor);
 
         // Compute rgba from hex color + bgOpacity (0-100)
         const opacity = typeof msgCfg.bgOpacity === "number" ? msgCfg.bgOpacity / 100 : 0;
@@ -270,6 +276,11 @@
           activeTextColor = active.textColor;
           activeBgColor   = active.bgColor;
         }
+      }
+      // Color slot override — takes precedence over color triggers
+      if (timer.activeColorSlot && Array.isArray(definedColors)) {
+        const slotColor = definedColors[timer.activeColorSlot - 1];
+        if (slotColor) activeTextColor = slotColor;
       }
       root.style.setProperty("--text-color", activeTextColor);
       root.style.setProperty("--bg-color",   activeBgColor);

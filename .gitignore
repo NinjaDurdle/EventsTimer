@@ -2,3 +2,4 @@ node_modules/
 mnt/
 bridge-state.json
 presets.json
+prototype/

@@ -39,7 +39,7 @@
       justify-content: space-between;
       margin-bottom: 10px;
     }
-    h1 { font-size: 1.1rem; font-weight: 600; color: var(--muted); }
+    h1 { font-size: 1.1rem; font-weight: 700; color: var(--text); display:flex; align-items:center; gap:8px; }
     h2 { font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
          letter-spacing: 0.08em; color: var(--muted); }
 
@@ -133,18 +133,14 @@
     .footer-link {
       font-size: 0.72rem; color: var(--muted); text-decoration: none;
       opacity: 0.55; transition: opacity 0.15s;
+      display: flex; align-items: center; gap: 5px;
     }
     .footer-link:hover { opacity: 1; color: var(--accent); }
     .btn-arrange {
-      font-size: 0.8rem;
-      font-weight: 600;
-      padding: 3px 10px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      color: var(--muted);
-      border-radius: 6px;
-      cursor: pointer;
-      transition: all 0.15s;
+      font-size: 0.8rem; font-weight: 600; padding: 3px 10px;
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--muted); border-radius: 6px; cursor: pointer;
+      transition: all 0.15s; display: flex; align-items: center; gap: 5px;
     }
     .btn-arrange:hover { border-color: var(--accent); color: var(--accent); }
     .btn-arrange.active { border-color: var(--accent); color: var(--accent); background: rgba(79,156,249,0.1); }
@@ -562,6 +558,131 @@
     }
     .msg-card-del:hover { border-color: var(--danger); color: var(--danger); }
 
+    /* ── Color slot selector ── */
+    .color-slot-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-top: 4px;
+      margin-bottom: 2px;
+    }
+    .slot-label { font-size: 0.65rem; color: var(--muted); flex-shrink: 0; }
+    .slot-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 1.5px solid var(--border);
+      cursor: pointer;
+      padding: 0;
+      flex-shrink: 0;
+      background: var(--surface2);
+      transition: transform 0.1s;
+      font-size: 0;
+      line-height: 1;
+    }
+    .slot-dot:active { transform: scale(0.82); }
+    .slot-dot.active { outline: 2px solid var(--text); outline-offset: 1.5px; }
+
+    /* ── Parent context strip ── */
+    .parent-strip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(79,199,120,0.08);
+      border: 1px solid rgba(79,199,120,0.25);
+      border-radius: 6px;
+      padding: 5px 10px;
+      margin-bottom: 8px;
+      flex-shrink: 0;
+    }
+    .parent-strip-label {
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--success);
+      opacity: 0.6;
+      flex-shrink: 0;
+    }
+    .parent-strip-name {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--success);
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .parent-strip-time {
+      font-family: monospace;
+      font-size: 0.88rem;
+      color: var(--success);
+      flex-shrink: 0;
+    }
+    .parent-strip-exit {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 1rem;
+      padding: 2px 5px;
+      cursor: pointer;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .parent-strip-exit:hover { color: var(--danger); }
+
+    /* ── Fire Next panel ── */
+    .fire-next-panel { margin-top: 8px; }
+    .btn-fire-next {
+      width: 100%;
+      background: var(--success);
+      color: #000;
+      font-weight: 700;
+      font-size: 1rem;
+      padding: 8px;
+      border: none;
+      border-radius: var(--radius);
+    }
+    .btn-fire-next:hover { filter: brightness(1.12); }
+
+    /* ── Child timer items ── */
+    .preset-item.is-child {
+      margin-left: 18px;
+      border-left-color: var(--border);
+    }
+    .child-indent {
+      color: var(--muted);
+      font-size: 0.75rem;
+      flex-shrink: 0;
+      opacity: 0.5;
+      line-height: 1;
+      padding-right: 2px;
+    }
+
+    /* ── useParentRemaining toggle ── */
+    .btn-snap-parent {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--muted);
+      font-size: 0.68rem;
+      padding: 1px 5px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.12s;
+    }
+    .btn-snap-parent.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(79,156,249,0.1);
+    }
+    .btn-snap-parent:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Hide number input spinners ── */
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
     /* ── Portrait fallback ── */
     @media (max-width: 768px) {
       html, body { height: auto; overflow: auto; }
@@ -574,7 +695,10 @@
 </head>
 <body>
   <div class="page-header">
-    <h1>⏱ Timer Control</h1>
+    <h1 style="display:flex;align-items:center;gap:8px;">
+      <img src="icons/Logo.svg" alt="EventsTimer" style="height:20px;width:auto;">
+      <span style="font-size:0.75rem;font-weight:600;color:var(--muted);letter-spacing:0.04em;">Control</span>
+    </h1>
   </div>
 
   <div class="columns">
@@ -604,6 +728,14 @@
       <div class="col-scroll">
 
         <div class="card" id="transport-card">
+          <!-- Parent context strip — visible when a child is foreground -->
+          <div class="parent-strip" id="parent-strip" style="display:none">
+            <span class="parent-strip-label">Session</span>
+            <span class="parent-strip-name" id="parent-strip-name">—</span>
+            <span class="parent-strip-time" id="parent-strip-time">--:--:--</span>
+            <button class="parent-strip-exit" id="btn-exit-child" title="Exit session context">✕</button>
+          </div>
+
           <div class="timer-header">
             <div id="active-timer-name">—</div>
             <div id="mode-badge">COUNTDOWN</div>
@@ -612,14 +744,20 @@
           <div id="msg-active-strip"></div>
 
           <div class="transport">
-            <button class="btn-play"  id="btn-play">▶ Start</button>
-            <button class="btn-stop"  id="btn-stop">⏹ Stop</button>
-            <button class="btn-reset" id="btn-reset">↺ Reset</button>
+            <button class="btn-play"  id="btn-play"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6,3 20,12 6,21"/></svg> Start</button>
+            <button class="btn-stop"  id="btn-stop"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/></svg> Stop</button>
+            <button class="btn-reset" id="btn-reset"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 1.5-5"/><polyline points="3,3 3,7 7,7"/></svg> Reset</button>
           </div>
           <div class="prev-next-row">
-            <button class="btn-prev" id="btn-prev">⏮ Prev</button>
-            <button class="btn-next" id="btn-next">Next ⏭</button>
+            <button class="btn-prev" id="btn-prev"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="20,3 8,12 20,21"/><line x1="5" y1="3" x2="5" y2="21"/></svg> Prev</button>
+            <button class="btn-next" id="btn-next">Next <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="4,3 16,12 4,21"/><line x1="19" y1="3" x2="19" y2="21"/></svg></button>
           </div>
+
+          <!-- Fire Next panel — visible when child is at endReached and next sibling exists -->
+          <div class="fire-next-panel" id="fire-next-panel" style="display:none">
+            <button class="btn-fire-next" id="btn-fire-next">▶ Fire Next: <span id="fire-next-name">—</span></button>
+          </div>
+
           <div class="jog-grid">
             <button class="btn-jog" data-delta="5">+5 min</button>
             <button class="btn-jog" data-delta="1">+1 min</button>
@@ -661,18 +799,29 @@
   <footer class="page-footer">
     <span id="status">Connecting…</span>
     <div class="footer-links">
-      <a href="/admin"   class="footer-link">⚙ Admin</a>
-      <a href="/display" class="footer-link" target="_blank">⧉ Display</a>
+      <a href="/admin"   class="footer-link" style="display:flex;align-items:center;gap:5px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        Admin
+      </a>
+      <a href="/display" class="footer-link" target="_blank" style="display:flex;align-items:center;gap:5px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><polyline points="14,6 18,6 18,10"/><line x1="18" y1="6" x2="13" y2="11"/></svg>
+        Display
+      </a>
     </div>
-    <button class="btn-arrange" id="btn-arrange">⊞ Arrange</button>
+    <button class="btn-arrange" id="btn-arrange">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+      Arrange
+    </button>
   </footer>
 
   <script>
     // ── State ──────────────────────────────────────────────────────────────────
     let ws;
-    let latestState    = null;
-    let latestPresets  = [];
-    let reconnectDelay = 1000;
+    let latestState         = null;
+    let latestPresets       = [];
+    let latestDefinedColors = ["#4fc978", "#f9c74f", "#f95f4f"];
+    let latestParentContext = null;
+    let reconnectDelay      = 1000;
     let reorderMode    = false;
     let dragging       = null;        // timer item being dragged
     let dragJustEnded  = false;       // suppresses clicks after a drag completes
@@ -682,9 +831,9 @@
     let arrangeOtherCols   = [];      // the 2 non-dragged cols at drag start, in DOM order
 
     const ICON = {
-      save:   `<img src="/icons/Save.svg"   width="35" height="35" aria-hidden="true">`,
-      upload: `<img src="/icons/Upload.svg" width="35" height="35" aria-hidden="true">`,
-      trash:  `<img src="/icons/Trash.svg"  width="35" height="35" aria-hidden="true">`,
+      save:   `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="11" height="13" rx="1.5"/><line x1="8" y1="4" x2="8" y2="17"/><line x1="16" y1="8" x2="20" y2="8"/><line x1="20" y1="8" x2="20" y2="19"/><polyline points="17,16 20,19 23,16"/></svg>`,
+      upload: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h9l5 5v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><polyline points="14,3 14,8 19,8"/><line x1="8" y1="13" x2="16" y2="13"/><polyline points="13,10 16,13 13,16"/></svg>`,
+      trash:  `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3,6 5,6 21,6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`,
     };
 
     // Shared drag ghost (used for both timer and column drags)
@@ -717,7 +866,9 @@
     // ── WebSocket ──────────────────────────────────────────────────────────────
 
     function connect() {
-      ws = new WebSocket(`ws://${location.host}`);
+      try {
+        ws = new WebSocket(`ws://${location.host}`);
+      } catch(e) { console.warn("WS unavailable in preview:", e.message); return; }
       ws.addEventListener("open", () => {
         reconnectDelay = 1000;
         statusEl.textContent = "● Connected";
@@ -748,13 +899,18 @@
 
     // ── Render state ───────────────────────────────────────────────────────────
 
-    function renderState({ timer, display }) {
+    function renderState({ timer, display, definedColors, parentContext }) {
+      if (Array.isArray(definedColors)) latestDefinedColors = definedColors;
+      latestParentContext = parentContext || null;
+
       bigTimer.textContent = formatMs(timer.currentMs, display.showSubseconds);
       bigTimer.classList.toggle("end", timer.endReached);
 
       activeNameEl.textContent = timer.activePresetName || "—";
       modeBadge.textContent    = timer.mode === "external" ? "EXTERNAL" : timer.mode.toUpperCase();
-      btnPlay.textContent      = timer.running ? "⏸ Pause" : "▶ Start";
+      btnPlay.innerHTML = timer.running
+        ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="4" x2="8" y2="20"/><line x1="16" y1="4" x2="16" y2="20"/></svg> Pause`
+        : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6,3 20,12 6,21"/></svg> Start`;
 
       endTabs.forEach(t => t.classList.toggle("active", t.dataset.behavior === timer.endBehavior));
 
@@ -784,17 +940,57 @@
         btn.classList.toggle("has-message", isActive);
       });
 
-      // Prev/Next button states
-      const activeIdx = latestPresets.findIndex(p => p.id === timer.activePresetId);
-      document.getElementById("btn-prev").disabled = activeIdx <= 0;
-      document.getElementById("btn-next").disabled = !timer.nextPresetId;
+      // Parent context strip
+      const parentStrip    = document.getElementById("parent-strip");
+      const fireNextPanel  = document.getElementById("fire-next-panel");
+      if (parentContext) {
+        parentStrip.style.display = "";
+        document.getElementById("parent-strip-name").textContent = parentContext.name;
+        document.getElementById("parent-strip-time").textContent = formatMs(parentContext.currentMs);
 
-      if (latestPresets.length && !presetList.querySelector(".preset-rename-input, .meta-time-inputs")) {
-        renderPresets(latestPresets);
+        const childIdx  = (parentContext.childIds || []).indexOf(timer.activePresetId);
+        const hasNext   = childIdx >= 0 && childIdx < (parentContext.childIds || []).length - 1;
+        if (timer.endReached && hasNext) {
+          fireNextPanel.style.display = "";
+          const nextChildId = parentContext.childIds[childIdx + 1];
+          const nextChild   = latestPresets.find(p => p.id === nextChildId);
+          document.getElementById("fire-next-name").textContent = nextChild ? nextChild.name : "Next";
+        } else {
+          fireNextPanel.style.display = "none";
+        }
+      } else {
+        parentStrip.style.display   = "none";
+        fireNextPanel.style.display = "none";
       }
+
+      // Prev/Next button states — navigate relative to parent when in nested context
+      const topLevel  = latestPresets.filter(p => !p.parentId);
+      const refId     = parentContext ? parentContext.id : timer.activePresetId;
+      const refIdx    = topLevel.findIndex(p => p.id === refId);
+      document.getElementById("btn-prev").disabled = refIdx <= 0;
+      document.getElementById("btn-next").disabled = parentContext
+        ? refIdx < 0 || refIdx >= topLevel.length - 1
+        : !timer.nextPresetId;
+
+      // Update active/next highlighting without rebuilding the DOM
+      syncPresetHighlights(timer.activePresetId, timer.nextPresetId, timer.running);
     }
 
     // ── Render timer list ──────────────────────────────────────────────────────
+
+    // Lightweight highlight sync — called on every state tick.
+    // Only touches CSS classes; never rebuilds DOM elements.
+    function syncPresetHighlights(activeId, nextId, isRunning) {
+      presetList.querySelectorAll(".preset-item").forEach(item => {
+        const id = item.dataset.id;
+        item.classList.toggle("preset-active", id === activeId);
+        item.classList.toggle("preset-next",   id !== activeId && id === nextId);
+        const modeSpan   = item.querySelector(".meta-mode");
+        const setNextBtn = item.querySelector(".btn-setnext");
+        if (modeSpan)   modeSpan.classList.toggle("locked", isRunning && id === activeId);
+        if (setNextBtn) setNextBtn.classList.toggle("is-next", id === nextId);
+      });
+    }
 
     const MODE_LABELS = { countdown: "Countdown", countup: "Count Up", external: "External", clock: "Clock" };
     const END_LABELS  = { hold: "Hold", flash: "Flash", load: "Load Next", start: "Start Next" };
@@ -805,100 +1001,197 @@
         return;
       }
 
-      const activeId  = latestState?.timer?.activePresetId;
-      const nextId    = latestState?.timer?.nextPresetId;
-      const isRunning = latestState?.timer?.running;
-
       presetList.innerHTML = "";
-      presets.forEach(p => {
-        const item = document.createElement("div");
-        item.className  = "preset-item";
-        item.dataset.id = p.id;
 
-        if (p.id === activeId)    item.classList.add("preset-active");
-        else if (p.id === nextId) item.classList.add("preset-next");
-
-        const isThisRunning = isRunning && p.id === activeId;
-
-        item.innerHTML = `
-          <span class="drag-handle">≡</span>
-          <div class="preset-body">
-            <div class="preset-name">${escHtml(p.name)}</div>
-            <div class="preset-meta">
-              <span class="meta-mode${isThisRunning ? " locked" : ""}"
-                    title="${isThisRunning ? "Mode locked while running" : "Click to change mode"}"
-              >${escHtml(MODE_LABELS[p.mode] || p.mode)}</span>
-              <span class="meta-sep">·</span>
-              <span class="meta-time" title="Click to edit time">${formatMs(p.targetMs)}</span>
-              <span class="meta-sep">·</span>
-              <span class="meta-endbehavior" title="Click to change end behavior">${escHtml(END_LABELS[p.endBehavior] || p.endBehavior)}</span>
-            </div>
-          </div>
-          <div class="preset-actions">
-            <button class="preset-btn btn-setnext${p.id === nextId ? " is-next" : ""}" title="Set as on-deck">⏭</button>
-            <button class="preset-btn btn-overwrite" title="Overwrite with current state">${ICON.save}</button>
-            <button class="preset-btn btn-load"      title="Load to transport">${ICON.upload}</button>
-            <button class="preset-btn btn-del"       title="Delete">${ICON.trash}</button>
-          </div>`;
-
-        // ── Click on name → rename ──
-        item.querySelector(".preset-name").addEventListener("click", (e) => {
-          if (dragJustEnded) return;
-          e.stopPropagation();
-          startRename(item, p);
+      // Render top-level items; then render each parent's children directly below it
+      const topLevel = presets.filter(p => !p.parentId);
+      topLevel.forEach(p => {
+        presetList.appendChild(buildPresetItem(p, false));
+        // Render children in the order declared by parent.children[]
+        const orderedChildren = (p.children || [])
+          .map(id => presets.find(x => x.id === id))
+          .filter(Boolean);
+        orderedChildren.forEach(child => {
+          presetList.appendChild(buildPresetItem(child, true));
         });
-
-        // ── Click on time → inline time editor ──
-        item.querySelector(".meta-time").addEventListener("click", (e) => {
-          if (dragJustEnded) return;
-          e.stopPropagation();
-          startTimeEdit(item, p);
-        });
-
-        // ── Click on mode → inline select (locked while running) ──
-        item.querySelector(".meta-mode").addEventListener("click", (e) => {
-          if (dragJustEnded) return;
-          e.stopPropagation();
-          if (isThisRunning) return;
-          startMetaSelect(item, p, "mode", ".meta-mode", Object.keys(MODE_LABELS), MODE_LABELS);
-        });
-
-        // ── Click on end behavior → inline select ──
-        item.querySelector(".meta-endbehavior").addEventListener("click", (e) => {
-          if (dragJustEnded) return;
-          e.stopPropagation();
-          startMetaSelect(item, p, "endBehavior", ".meta-endbehavior", Object.keys(END_LABELS), END_LABELS);
-        });
-
-        // ── Set as on-deck ──
-        item.querySelector(".btn-setnext").addEventListener("click", (e) => {
-          e.stopPropagation();
-          send({ type: "preset", payload: { action: "setActive", preset: { id: p.id } } });
-        });
-
-        // ── Overwrite ──
-        item.querySelector(".btn-overwrite").addEventListener("click", (e) => {
-          e.stopPropagation();
-          send({ type: "preset", payload: { action: "overwrite", preset: { id: p.id } } });
-        });
-
-        // ── Load ──
-        item.querySelector(".btn-load").addEventListener("click", (e) => {
-          e.stopPropagation();
-          send({ type: "preset", payload: { action: "load", preset: { id: p.id } } });
-        });
-
-        // ── Delete ──
-        item.querySelector(".btn-del").addEventListener("click", (e) => {
-          e.stopPropagation();
-          if (confirm(`Delete timer "${p.name}"?`)) {
-            send({ type: "preset", payload: { action: "delete", preset: { id: p.id } } });
-          }
-        });
-
-        initDrag(item);
-        presetList.appendChild(item);
       });
+    }
+
+    function buildPresetItem(p, isChild) {
+      const activeId     = latestState?.timer?.activePresetId;
+      const nextId       = latestState?.timer?.nextPresetId;
+      const isRunning    = latestState?.timer?.running;
+      const isThisActive = p.id === activeId;
+      const isThisRunning = isRunning && isThisActive;
+
+      const item = document.createElement("div");
+      item.className  = "preset-item" + (isChild ? " is-child" : "");
+      item.dataset.id = p.id;
+
+      if (isThisActive)       item.classList.add("preset-active");
+      else if (p.id === nextId) item.classList.add("preset-next");
+
+      const isParent = !isChild && Array.isArray(p.children) && p.children.length > 0;
+
+      // Build inner HTML — child items have an indent glyph and no drag handle shown in reorder mode
+      item.innerHTML = `
+        ${isChild
+          ? `<span class="child-indent">└</span>`
+          : `<span class="drag-handle"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="9" cy="7" r="1.2"/><circle cx="15" cy="7" r="1.2"/><circle cx="9" cy="12" r="1.2"/><circle cx="15" cy="12" r="1.2"/><circle cx="9" cy="17" r="1.2"/><circle cx="15" cy="17" r="1.2"/></svg></span>`
+        }
+        <div class="preset-body">
+          <div class="preset-name">${escHtml(p.name)}</div>
+          <div class="preset-meta">
+            <span class="meta-mode${isThisRunning ? " locked" : ""}"
+                  title="${isThisRunning ? "Mode locked while running" : "Click to change mode"}"
+            >${escHtml(MODE_LABELS[p.mode] || p.mode)}</span>
+            <span class="meta-sep">·</span>
+            ${isChild
+              ? `<span class="meta-time" title="Click to edit time">${p.useParentRemaining ? "⟲ snap" : formatMs(p.targetMs)}</span>`
+              : `<span class="meta-time" title="Click to edit time">${formatMs(p.targetMs)}</span>`
+            }
+            <span class="meta-sep">·</span>
+            <span class="meta-endbehavior" title="Click to change end behavior">${escHtml(END_LABELS[p.endBehavior] || p.endBehavior)}</span>
+          </div>
+        </div>
+        <div class="preset-actions">
+          ${!isChild
+            ? `<button class="preset-btn btn-setnext${p.id === nextId ? " is-next" : ""}" title="Set as on-deck">⏭</button>`
+            : ""
+          }
+          <button class="preset-btn btn-overwrite" title="Overwrite with current state">${ICON.save}</button>
+          <button class="preset-btn btn-load" title="${isChild ? "Fire this child" : isParent ? "Load session" : "Load to transport"}">${ICON.upload}</button>
+          <button class="preset-btn btn-del" title="Delete">${ICON.trash}</button>
+        </div>`;
+
+      // ── Click on name → rename ──
+      item.querySelector(".preset-name").addEventListener("click", (e) => {
+        if (dragJustEnded) return;
+        e.stopPropagation();
+        startRename(item, p);
+      });
+
+      // ── Click on time → inline time editor (children snap toggle instead if useParentRemaining) ──
+      item.querySelector(".meta-time").addEventListener("click", (e) => {
+        if (dragJustEnded) return;
+        e.stopPropagation();
+        if (isChild && p.useParentRemaining) {
+          // Toggle off — switch back to fixed time
+          send({ type: "preset", payload: { action: "update", preset: { id: p.id, useParentRemaining: false } } });
+          p.useParentRemaining = false;
+          const span = item.querySelector(".meta-time");
+          if (span) span.textContent = formatMs(p.targetMs);
+        } else {
+          startTimeEdit(item, p);
+        }
+      });
+
+      // ── Click on mode → inline select (locked while running) ──
+      item.querySelector(".meta-mode").addEventListener("click", (e) => {
+        if (dragJustEnded) return;
+        e.stopPropagation();
+        if (isThisRunning) return;
+        startMetaSelect(item, p, "mode", ".meta-mode", Object.keys(MODE_LABELS), MODE_LABELS);
+      });
+
+      // ── Click on end behavior → inline select ──
+      item.querySelector(".meta-endbehavior").addEventListener("click", (e) => {
+        if (dragJustEnded) return;
+        e.stopPropagation();
+        startMetaSelect(item, p, "endBehavior", ".meta-endbehavior", Object.keys(END_LABELS), END_LABELS);
+      });
+
+      // ── Set as on-deck (top-level only) ──
+      item.querySelector(".btn-setnext")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        send({ type: "preset", payload: { action: "setActive", preset: { id: p.id } } });
+      });
+
+      // ── Overwrite ──
+      item.querySelector(".btn-overwrite").addEventListener("click", (e) => {
+        e.stopPropagation();
+        send({ type: "preset", payload: { action: "overwrite", preset: { id: p.id } } });
+      });
+
+      // ── Load / Fire ──
+      item.querySelector(".btn-load").addEventListener("click", (e) => {
+        e.stopPropagation();
+        send({ type: "preset", payload: { action: "load", preset: { id: p.id } } });
+      });
+
+      // ── Delete ──
+      item.querySelector(".btn-del").addEventListener("click", (e) => {
+        e.stopPropagation();
+        const label = isParent ? `Delete session "${p.name}" and its ${(p.children||[]).length} child timer(s)?`
+                                : `Delete timer "${p.name}"?`;
+        if (confirm(label)) {
+          send({ type: "preset", payload: { action: "delete", preset: { id: p.id } } });
+        }
+      });
+
+      // Color slot picker appended to meta row
+      const metaRow = item.querySelector(".preset-meta");
+      const slotSep = document.createElement("span");
+      slotSep.className   = "meta-sep";
+      slotSep.textContent = "·";
+      const slotPicker = buildColorSlotPicker(p.colorSlot ?? null, (slot) => {
+        send({ type: "preset", payload: { action: "update", preset: { id: p.id, colorSlot: slot } } });
+        p.colorSlot = slot;
+      });
+      metaRow.append(slotSep, slotPicker);
+
+      // useParentRemaining toggle for child items (appended after color picker)
+      if (isChild) {
+        const snapSep = document.createElement("span");
+        snapSep.className   = "meta-sep";
+        snapSep.textContent = "·";
+        const snapBtn = document.createElement("button");
+        snapBtn.className = "btn-snap-parent" + (p.useParentRemaining ? " active" : "");
+        snapBtn.title = "Use parent's remaining time as this child's duration (snapped at fire time)";
+        snapBtn.textContent = "⟲ snap";
+        snapBtn.addEventListener("pointerdown", e => e.stopPropagation());
+        snapBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const newVal = !p.useParentRemaining;
+          send({ type: "preset", payload: { action: "update", preset: { id: p.id, useParentRemaining: newVal } } });
+          p.useParentRemaining = newVal;
+          snapBtn.classList.toggle("active", newVal);
+          const timeSpan = item.querySelector(".meta-time");
+          if (timeSpan) timeSpan.textContent = newVal ? "⟲ snap" : formatMs(p.targetMs);
+        });
+        metaRow.append(snapSep, snapBtn);
+      }
+
+      // Add Child button for parent items (top-level without a parent)
+      if (!isChild) {
+        const addChildSep = document.createElement("span");
+        addChildSep.className   = "meta-sep";
+        addChildSep.textContent = "·";
+        const addChildBtn = document.createElement("button");
+        addChildBtn.className   = "btn-snap-parent";
+        addChildBtn.title       = "Add a child timer under this session";
+        addChildBtn.textContent = "+ child";
+        addChildBtn.addEventListener("pointerdown", e => e.stopPropagation());
+        addChildBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const name = nextTimerName();
+          send({ type: "preset", payload: { action: "save", preset: {
+            name,
+            mode:        "countdown",
+            targetMs:    5 * 60 * 1000,
+            endBehavior: "hold",
+            displayConfig: latestState ? { ...latestState.display } : {},
+            parentId:    p.id,
+            useParentRemaining: false,
+          }}});
+        });
+        metaRow.append(addChildSep, addChildBtn);
+      }
+
+      // Only top-level items can be drag-reordered
+      if (!isChild) initDrag(item);
+
+      return item;
     }
 
     // ── Inline rename ──────────────────────────────────────────────────────────
@@ -1203,7 +1496,7 @@
 
     document.getElementById("btn-stop").addEventListener("click", () => {
       send({ type: "command", payload: { action: "stop" } });
-      btnPlay.textContent = "▶ Start";
+      btnPlay.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6,3 20,12 6,21"/></svg> Start`;
     });
 
     document.getElementById("btn-reset").addEventListener("click", () =>
@@ -1211,14 +1504,31 @@
 
     document.getElementById("btn-prev").addEventListener("click", () => {
       if (!latestState || !latestPresets.length) return;
-      const idx = latestPresets.findIndex(p => p.id === latestState.timer.activePresetId);
-      if (idx > 0) send({ type: "preset", payload: { action: "load", preset: { id: latestPresets[idx - 1].id } } });
+      const topLevel = latestPresets.filter(p => !p.parentId);
+      const refId = latestParentContext ? latestParentContext.id : latestState.timer.activePresetId;
+      const idx   = topLevel.findIndex(p => p.id === refId);
+      if (idx > 0) send({ type: "preset", payload: { action: "load", preset: { id: topLevel[idx - 1].id } } });
     });
 
     document.getElementById("btn-next").addEventListener("click", () => {
       if (!latestState) return;
-      const nextId = latestState.timer.nextPresetId;
-      if (nextId) send({ type: "preset", payload: { action: "load", preset: { id: nextId } } });
+      if (latestParentContext) {
+        const topLevel = latestPresets.filter(p => !p.parentId);
+        const idx = topLevel.findIndex(p => p.id === latestParentContext.id);
+        if (idx >= 0 && idx < topLevel.length - 1)
+          send({ type: "preset", payload: { action: "load", preset: { id: topLevel[idx + 1].id } } });
+      } else {
+        const nextId = latestState.timer.nextPresetId;
+        if (nextId) send({ type: "preset", payload: { action: "load", preset: { id: nextId } } });
+      }
+    });
+
+    document.getElementById("btn-fire-next").addEventListener("click", () => {
+      send({ type: "command", payload: { action: "fireNextChild" } });
+    });
+
+    document.getElementById("btn-exit-child").addEventListener("click", () => {
+      send({ type: "command", payload: { action: "exitChildContext" } });
     });
 
     // ── Jog buttons ────────────────────────────────────────────────────────────
@@ -1267,7 +1577,7 @@
     // Fall back to a simple random hex string that is collision-resistant enough
     // for local IDs on a single-operator device.
     function randomId() {
-      if (typeof crypto !== "undefined" && crypto.randomUUID) return randomId();
+      if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
       return "id-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
     }
 
@@ -1309,6 +1619,22 @@
       ta.value = m.text;
       ta.rows = 2;
 
+      // Color slot row
+      const slotRow   = document.createElement("div");
+      slotRow.className = "color-slot-row";
+      const slotLabel = document.createElement("span");
+      slotLabel.className   = "slot-label";
+      slotLabel.textContent = "Color:";
+      const slotPicker = buildColorSlotPicker(m.colorSlot ?? null, (slot) => {
+        const msgs = getMessages();
+        const idx  = msgs.findIndex(x => x.id === m.id);
+        if (idx !== -1) { msgs[idx].colorSlot = slot; saveMessages(msgs); m.colorSlot = slot; }
+        if (card.classList.contains("msg-active")) {
+          send({ type: "command", payload: { action: "setMessage", text: ta.value.trim(), colorSlot: slot } });
+        }
+      });
+      slotRow.append(slotLabel, slotPicker);
+
       const footer = document.createElement("div");
       footer.className = "msg-card-footer";
 
@@ -1322,7 +1648,7 @@
       delBtn.title = "Remove card";
 
       footer.append(btn, delBtn);
-      card.append(ta, footer);
+      card.append(ta, slotRow, footer);
 
       ta.addEventListener("blur", () => {
         const msgs = getMessages();
@@ -1335,7 +1661,7 @@
           send({ type: "command", payload: { action: "setMessage", text: "" } });
         } else {
           const text = ta.value.trim();
-          if (text) send({ type: "command", payload: { action: "setMessage", text } });
+          if (text) send({ type: "command", payload: { action: "setMessage", text, colorSlot: m.colorSlot || null } });
         }
       });
 
@@ -1620,6 +1946,31 @@
     function escHtml(str) {
       return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
                         .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+    }
+
+    // ── Color slot picker ──────────────────────────────────────────────────────
+
+    function buildColorSlotPicker(currentSlot, onChange) {
+      const wrap = document.createElement("span");
+      wrap.style.cssText = "display:inline-flex;align-items:center;gap:3px;";
+
+      [null, 1, 2, 3].forEach((slot, i) => {
+        const dot = document.createElement("button");
+        dot.className = "slot-dot" + (currentSlot === slot ? " active" : "");
+        dot.title     = slot === null ? "Default color" : `Color ${slot}`;
+        if (slot !== null && latestDefinedColors[i - 1]) dot.style.background = latestDefinedColors[i - 1];
+        dot.addEventListener("pointerdown", (e) => e.stopPropagation());
+        dot.addEventListener("click", (e) => {
+          e.stopPropagation();
+          wrap.querySelectorAll(".slot-dot").forEach(d => d.classList.remove("active"));
+          dot.classList.add("active");
+          currentSlot = slot;
+          onChange(slot);
+        });
+        wrap.appendChild(dot);
+      });
+
+      return wrap;
     }
 
     // ── Init ───────────────────────────────────────────────────────────────────

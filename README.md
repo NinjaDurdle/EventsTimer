@@ -1,4 +1,4 @@
-# EventsTimer — v1.3.1
+# EventsTimer — v1.8.0
 
 Stage management countdown timer for Raspberry Pi and Debian-based Linux.
 Browser-controlled, OSC-compatible, CDEther-compatible, Irisdown-compatible.
@@ -412,6 +412,8 @@ wiring can damage the Pi GPIO.
 
 | Version | Summary |
 |---|---|
+| **1.8.0** | Nested timers (sequential children): parent session clock, children fire in sequence, Fire Next auto-starts next child, useParentRemaining snaps child duration at fire time |
+| **1.7.7** | Three-column control page redesign, admin redesign, color system (3 named slots), restart/reboot/shutdown buttons |
 | **1.3.1** | Version stamping across all files, bridge version metadata, admin version display, project renamed to EventsTimer |
 | **1.3** | External source mode, IDCT broadcast, Irisdown TCP server, Bridge manager, Mitti / Millumin / Pixera / LTC bridges, bundled fonts, admin status card |
 | **1.2** | Message display, color triggers, digit visibility, position/width sliders |
