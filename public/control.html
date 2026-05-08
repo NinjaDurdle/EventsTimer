@@ -106,11 +106,11 @@
       flex: 1;
       overflow-y: auto;
       min-height: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
       padding: 0 12px;
     }
+    /* Block layout gives reliable overflow-y scrolling; flex containers suppress scrollbars
+       when height is derived from parent flex rules and children have flex-shrink: 0 */
+    .col-scroll > * + * { margin-top: 10px; }
     .col-scroll::-webkit-scrollbar { width: 4px; }
     .col-scroll::-webkit-scrollbar-track { background: transparent; }
     .col-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
@@ -583,19 +583,18 @@
     .slot-dot:active { transform: scale(0.82); }
     .slot-dot.active { outline: 2px solid var(--text); outline-offset: 1.5px; }
 
-    /* ── Parent context strip ── */
-    .parent-strip {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      background: rgba(79,199,120,0.08);
-      border: 1px solid rgba(79,199,120,0.25);
-      border-radius: 6px;
-      padding: 5px 10px;
+    /* ── Session (parent) transport block ── */
+    .session-transport {
       margin-bottom: 8px;
       flex-shrink: 0;
     }
-    .parent-strip-label {
+    .session-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .session-label {
       font-size: 0.65rem;
       font-weight: 600;
       text-transform: uppercase;
@@ -604,7 +603,7 @@
       opacity: 0.6;
       flex-shrink: 0;
     }
-    .parent-strip-name {
+    .session-name {
       font-size: 0.82rem;
       font-weight: 600;
       color: var(--success);
@@ -613,13 +612,35 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .parent-strip-time {
+    .session-timer {
       font-family: monospace;
-      font-size: 0.88rem;
+      font-size: clamp(1.4rem, 2.5vw, 2.2rem);
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+      letter-spacing: 0.04em;
       color: var(--success);
+      padding: 2px 0;
+    }
+    .session-timer.end { color: var(--danger); }
+    .btn-focus-toggle {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 5px;
+      border: 1px solid rgba(79,199,120,0.4);
+      background: none;
+      color: var(--success);
+      cursor: pointer;
+      transition: all 0.12s;
+      white-space: nowrap;
       flex-shrink: 0;
     }
-    .parent-strip-exit {
+    .btn-focus-toggle:hover { background: rgba(79,199,120,0.12); }
+    .btn-focus-toggle.focused {
+      background: rgba(79,199,120,0.18);
+      border-color: var(--success);
+    }
+    .btn-exit-session {
       background: none;
       border: none;
       color: var(--muted);
@@ -629,7 +650,23 @@
       flex-shrink: 0;
       line-height: 1;
     }
-    .parent-strip-exit:hover { color: var(--danger); }
+    .btn-exit-session:hover { color: var(--danger); }
+    .session-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 8px 0 6px;
+    }
+
+    /* ── Jog section labels ── */
+    .jog-label {
+      font-size: 0.62rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      margin: 6px 0 3px;
+    }
+    .jog-label.session-color { color: var(--success); opacity: 0.7; }
 
     /* ── Fire Next panel ── */
     .fire-next-panel { margin-top: 8px; }
@@ -683,12 +720,13 @@
     input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
     input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
-    /* ── Portrait fallback ── */
+    /* ── Narrow fallback ── */
+    /* Switch columns to block layout so each col expands to its natural content height
+       and body scrolls. Avoids flex-item min-height inference issues across browsers. */
     @media (max-width: 768px) {
       html, body { height: auto; overflow: auto; }
-      .columns { flex-direction: column; }
+      .columns { display: block; }
       .col-scroll { overflow-y: visible; flex: none; }
-      .col-timers, .col-controls, .col-messages { flex: none; min-width: 0; }
       .col-resizer { display: none; }
     }
   </style>
@@ -716,7 +754,7 @@
           </div>
         </div>
         <button class="btn-add-row" id="btn-add-timer">+ Add Timer</button>
-        <div style="height:4px;flex-shrink:0;"></div>
+        <div style="height:4px;"></div>
       </div>
     </div>
 
@@ -728,14 +766,34 @@
       <div class="col-scroll">
 
         <div class="card" id="transport-card">
-          <!-- Parent context strip — visible when a child is foreground -->
-          <div class="parent-strip" id="parent-strip" style="display:none">
-            <span class="parent-strip-label">Session</span>
-            <span class="parent-strip-name" id="parent-strip-name">—</span>
-            <span class="parent-strip-time" id="parent-strip-time">--:--:--</span>
-            <button class="parent-strip-exit" id="btn-exit-child" title="Exit session context">✕</button>
+
+          <!-- Session (parent) transport — visible when a child is foreground -->
+          <div class="session-transport" id="session-transport" style="display:none">
+            <div class="session-header">
+              <span class="session-label">Session</span>
+              <span class="session-name" id="session-name">—</span>
+              <button class="btn-focus-toggle" id="btn-focus-toggle" title="Switch what the display shows">Display: Child</button>
+              <button class="btn-exit-session" id="btn-exit-child" title="Exit session">✕</button>
+            </div>
+            <div class="session-timer" id="session-timer">--:--</div>
+            <div class="jog-label session-color">Session jog</div>
+            <div class="jog-grid" id="jog-parent">
+              <button class="btn-jog" data-delta="5" data-target="parent">+5 min</button>
+              <button class="btn-jog" data-delta="1" data-target="parent">+1 min</button>
+              <button class="btn-jog" data-delta="-1" data-target="parent">−1 min</button>
+              <button class="btn-jog" data-delta="-5" data-target="parent">−5 min</button>
+            </div>
+            <div class="jog-label">Both jog</div>
+            <div class="jog-grid" id="jog-both">
+              <button class="btn-jog" data-delta="5" data-target="both">+5 min</button>
+              <button class="btn-jog" data-delta="1" data-target="both">+1 min</button>
+              <button class="btn-jog" data-delta="-1" data-target="both">−1 min</button>
+              <button class="btn-jog" data-delta="-5" data-target="both">−5 min</button>
+            </div>
+            <hr class="session-divider">
           </div>
 
+          <!-- Child / standalone transport -->
           <div class="timer-header">
             <div id="active-timer-name">—</div>
             <div id="mode-badge">COUNTDOWN</div>
@@ -758,11 +816,12 @@
             <button class="btn-fire-next" id="btn-fire-next">▶ Fire Next: <span id="fire-next-name">—</span></button>
           </div>
 
-          <div class="jog-grid">
-            <button class="btn-jog" data-delta="5">+5 min</button>
-            <button class="btn-jog" data-delta="1">+1 min</button>
-            <button class="btn-jog" data-delta="-1">−1 min</button>
-            <button class="btn-jog" data-delta="-5">−5 min</button>
+          <div class="jog-label" id="jog-child-label" style="display:none">Child jog</div>
+          <div class="jog-grid" id="jog-child">
+            <button class="btn-jog" data-delta="5" data-target="child">+5 min</button>
+            <button class="btn-jog" data-delta="1" data-target="child">+1 min</button>
+            <button class="btn-jog" data-delta="-1" data-target="child">−1 min</button>
+            <button class="btn-jog" data-delta="-5" data-target="child">−5 min</button>
           </div>
         </div>
 
@@ -777,7 +836,7 @@
           <div class="end-hint" id="end-hint"></div>
         </div>
 
-        <div style="height:4px;flex-shrink:0;"></div>
+        <div style="height:4px;"></div>
       </div>
     </div>
 
@@ -789,7 +848,7 @@
       <div class="col-scroll">
         <div id="message-list"></div>
         <button class="btn-add-row" id="btn-add-msg">+ Add Message</button>
-        <div style="height:4px;flex-shrink:0;"></div>
+        <div style="height:4px;"></div>
       </div>
     </div>
 
@@ -821,6 +880,7 @@
     let latestPresets       = [];
     let latestDefinedColors = ["#4fc978", "#f9c74f", "#f95f4f"];
     let latestParentContext = null;
+    let latestDisplayFocus  = "foreground";
     let reconnectDelay      = 1000;
     let reorderMode    = false;
     let dragging       = null;        // timer item being dragged
@@ -899,9 +959,10 @@
 
     // ── Render state ───────────────────────────────────────────────────────────
 
-    function renderState({ timer, display, definedColors, parentContext }) {
+    function renderState({ timer, display, definedColors, parentContext, displayFocus }) {
       if (Array.isArray(definedColors)) latestDefinedColors = definedColors;
       latestParentContext = parentContext || null;
+      latestDisplayFocus  = displayFocus  || "foreground";
 
       bigTimer.textContent = formatMs(timer.currentMs, display.showSubseconds);
       bigTimer.classList.toggle("end", timer.endReached);
@@ -940,16 +1001,25 @@
         btn.classList.toggle("has-message", isActive);
       });
 
-      // Parent context strip
-      const parentStrip    = document.getElementById("parent-strip");
-      const fireNextPanel  = document.getElementById("fire-next-panel");
+      // Session transport block
+      const sessionTransport = document.getElementById("session-transport");
+      const fireNextPanel    = document.getElementById("fire-next-panel");
+      const jogChildLabel    = document.getElementById("jog-child-label");
       if (parentContext) {
-        parentStrip.style.display = "";
-        document.getElementById("parent-strip-name").textContent = parentContext.name;
-        document.getElementById("parent-strip-time").textContent = formatMs(parentContext.currentMs);
+        sessionTransport.style.display = "";
+        document.getElementById("session-name").textContent  = parentContext.name;
+        const sessionTimerEl = document.getElementById("session-timer");
+        sessionTimerEl.textContent = formatMs(parentContext.currentMs);
+        sessionTimerEl.classList.toggle("end", parentContext.endReached);
 
-        const childIdx  = (parentContext.childIds || []).indexOf(timer.activePresetId);
-        const hasNext   = childIdx >= 0 && childIdx < (parentContext.childIds || []).length - 1;
+        // Display focus toggle button
+        const focusBtn = document.getElementById("btn-focus-toggle");
+        const focused  = latestDisplayFocus === "parent";
+        focusBtn.textContent = focused ? "Display: Session" : "Display: Child";
+        focusBtn.classList.toggle("focused", focused);
+
+        const childIdx = (parentContext.childIds || []).indexOf(timer.activePresetId);
+        const hasNext  = childIdx >= 0 && childIdx < (parentContext.childIds || []).length - 1;
         if (timer.endReached && hasNext) {
           fireNextPanel.style.display = "";
           const nextChildId = parentContext.childIds[childIdx + 1];
@@ -958,15 +1028,19 @@
         } else {
           fireNextPanel.style.display = "none";
         }
+
+        // Show child-jog label when in session (disambiguates from session/both jog rows)
+        jogChildLabel.style.display = "";
       } else {
-        parentStrip.style.display   = "none";
-        fireNextPanel.style.display = "none";
+        sessionTransport.style.display = "none";
+        fireNextPanel.style.display    = "none";
+        jogChildLabel.style.display    = "none";
       }
 
       // Prev/Next button states — navigate relative to parent when in nested context
-      const topLevel  = latestPresets.filter(p => !p.parentId);
-      const refId     = parentContext ? parentContext.id : timer.activePresetId;
-      const refIdx    = topLevel.findIndex(p => p.id === refId);
+      const topLevel = latestPresets.filter(p => !p.parentId);
+      const refId    = parentContext ? parentContext.id : timer.activePresetId;
+      const refIdx   = topLevel.findIndex(p => p.id === refId);
       document.getElementById("btn-prev").disabled = refIdx <= 0;
       document.getElementById("btn-next").disabled = parentContext
         ? refIdx < 0 || refIdx >= topLevel.length - 1
@@ -1160,6 +1234,53 @@
           if (timeSpan) timeSpan.textContent = newVal ? "⟲ snap" : formatMs(p.targetMs);
         });
         metaRow.append(snapSep, snapBtn);
+      }
+
+      // Last-child lock: show lock instead of snap toggle for the last child in the parent
+      if (isChild) {
+        const parentPreset  = latestPresets.find(x => x.id === p.parentId);
+        const siblingIds    = parentPreset ? (parentPreset.children || []) : [];
+        const isLast        = siblingIds.length > 0 && siblingIds[siblingIds.length - 1] === p.id;
+        if (isLast) {
+          // Replace the snap toggle (already appended) with a lock indicator
+          const existingSnap = metaRow.querySelector(".btn-snap-parent");
+          if (existingSnap) {
+            const prevSep = existingSnap.previousSibling;
+            if (prevSep && prevSep.classList && prevSep.classList.contains("meta-sep")) prevSep.remove();
+            existingSnap.remove();
+          }
+          const lockSep = document.createElement("span");
+          lockSep.className   = "meta-sep";
+          lockSep.textContent = "·";
+          const lockSpan = document.createElement("span");
+          lockSpan.className = "btn-snap-parent active";
+          lockSpan.title     = "Last child always runs until the session ends";
+          lockSpan.textContent = "⏹ tied";
+          lockSpan.style.pointerEvents = "none";
+          metaRow.append(lockSep, lockSpan);
+        }
+      }
+
+      // defaultDisplayFocus toggle for parent presets (top-level with children)
+      if (isParent) {
+        const focusSep = document.createElement("span");
+        focusSep.className   = "meta-sep";
+        focusSep.textContent = "·";
+        const focusBtn = document.createElement("button");
+        const currentFocus = p.defaultDisplayFocus || "foreground";
+        focusBtn.className   = "btn-snap-parent" + (currentFocus === "parent" ? " active" : "");
+        focusBtn.title       = "Default display when this session loads";
+        focusBtn.textContent = currentFocus === "parent" ? "⊡ show session" : "⊡ show child";
+        focusBtn.addEventListener("pointerdown", e => e.stopPropagation());
+        focusBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const newFocus = (p.defaultDisplayFocus || "foreground") === "foreground" ? "parent" : "foreground";
+          send({ type: "preset", payload: { action: "update", preset: { id: p.id, defaultDisplayFocus: newFocus } } });
+          p.defaultDisplayFocus = newFocus;
+          focusBtn.classList.toggle("active", newFocus === "parent");
+          focusBtn.textContent = newFocus === "parent" ? "⊡ show session" : "⊡ show child";
+        });
+        metaRow.append(focusSep, focusBtn);
       }
 
       // Add Child button for parent items (top-level without a parent)
@@ -1531,12 +1652,22 @@
       send({ type: "command", payload: { action: "exitChildContext" } });
     });
 
+    // ── Display focus toggle ────────────────────────────────────────────────────
+
+    document.getElementById("btn-focus-toggle").addEventListener("click", () => {
+      const next = latestDisplayFocus === "parent" ? "foreground" : "parent";
+      send({ type: "command", payload: { action: "setDisplayFocus", focus: next } });
+    });
+
     // ── Jog buttons ────────────────────────────────────────────────────────────
+    // data-target: "child" (default), "parent", or "both"
 
     document.querySelectorAll(".btn-jog").forEach(btn => {
       btn.addEventListener("click", () => {
-        const delta = parseInt(btn.dataset.delta, 10);
-        send({ type: "command", payload: { action: "adjust", deltaMs: delta * 60_000 } });
+        const delta  = parseInt(btn.dataset.delta, 10);
+        const target = btn.dataset.target || "child";
+        const actionMap = { child: "adjust", parent: "adjustParent", both: "adjustBoth" };
+        send({ type: "command", payload: { action: actionMap[target], deltaMs: delta * 60_000 } });
       });
     });
 

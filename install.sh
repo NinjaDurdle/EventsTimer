@@ -13,7 +13,7 @@
 
 set -e
 
-VERSION="1.8.0"
+VERSION="1.9.0"
 INSTALL_DIR="/opt/eventstimer"
 
 echo "=== EventsTimer v${VERSION} — Install ==="

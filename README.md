@@ -1,4 +1,4 @@
-# EventsTimer — v1.8.0
+# EventsTimer — v1.9.0
 
 Stage management countdown timer for Raspberry Pi and Debian-based Linux.
 Browser-controlled, OSC-compatible, CDEther-compatible, Irisdown-compatible.

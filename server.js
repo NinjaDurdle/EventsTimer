@@ -14,7 +14,7 @@ const path     = require("path");
 const { exec, execSync } = require("child_process");
 const { WebSocketServer, WebSocket } = require("ws");
 
-const TIMER_VERSION = "1.8.0";
+const TIMER_VERSION = "1.9.0";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -70,8 +70,12 @@ let timerState = {
 };
 
 // Background parent state — set when a child timer is foreground in a nested session.
-// The parent clock ticks independently; the foreground child is tracked via timerState.
-let backgroundParent = null; // { id, currentMs, targetMs, endReached }
+// running mirrors timerState.running — both always start/pause/stop together.
+let backgroundParent = null; // { id, currentMs, targetMs, endReached, running }
+
+// Which timer the display page shows: "foreground" (child) or "parent".
+// Reset to "foreground" whenever a session is exited or a standalone preset loads.
+let displayFocus = "foreground";
 
 // ─── Display Config ───────────────────────────────────────────────────────────
 // visibleDigits: array of 6 booleans [tensHours, onesHours, tensMins, onesMins, tensSecs, onesSecs]
@@ -113,9 +117,10 @@ function loadPresets() {
     if (fs.existsSync(PRESETS_FILE)) {
       const raw = JSON.parse(fs.readFileSync(PRESETS_FILE, "utf8"));
       return raw.map(p => ({
-        children:           [],
-        parentId:           null,
-        useParentRemaining: false,
+        children:            [],
+        parentId:            null,
+        useParentRemaining:  false,
+        defaultDisplayFocus: "foreground",
         ...p,
       }));
     }
@@ -142,9 +147,8 @@ function startTick() {
 }
 
 function stopTick() {
-  // When a background parent is active, the tick loop must keep running for it.
-  // Only actually stop if nothing needs the loop.
-  if (backgroundParent) return;
+  // Keep the loop alive only if the parent is still actively running.
+  if (backgroundParent && backgroundParent.running) return;
   if (tickInterval) { clearInterval(tickInterval); tickInterval = null; }
   lastTickTime = null;
 }
@@ -173,8 +177,8 @@ function tick() {
     }
   }
 
-  // Background parent — always ticks while set (independent of foreground running state)
-  if (backgroundParent && !backgroundParent.endReached) {
+  // Background parent — ticks only when running (mirrors foreground running state)
+  if (backgroundParent && backgroundParent.running && !backgroundParent.endReached) {
     backgroundParent.currentMs = Math.max(0, backgroundParent.currentMs - delta);
     if (backgroundParent.currentMs === 0) backgroundParent.endReached = true;
   }
@@ -186,7 +190,9 @@ function handleCountdownEnd() {
   timerState.endReached = true;
   if (timerState.endBehavior === "hold") {
     timerState.running = false;
-    stopTick(); // no-op when backgroundParent is set — parent keeps loop alive
+    // Parent keeps ticking — stopTick() checks backgroundParent.running and keeps the loop alive.
+    // This preserves correct remaining time for subsequent children.
+    stopTick();
   } else if (timerState.endBehavior === "load" || timerState.endBehavior === "start") {
     const autoStart = timerState.endBehavior === "start";
     // In nested context — advance to next sibling child instead of using nextPresetId
@@ -198,13 +204,17 @@ function handleCountdownEnd() {
           const nextChild = presets.find(p => p.id === parentPreset.children[idx + 1]);
           if (nextChild) {
             fireChild(nextChild);
-            if (autoStart) { timerState.running = true; /* loop already running */ }
+            if (autoStart) {
+              timerState.running = true;
+              backgroundParent.running = true;
+            }
             return;
           }
         }
       }
       // No next sibling — hold at 0
       timerState.running = false;
+      backgroundParent.running = false;
       return;
     }
     // Normal single-timer behavior
@@ -228,11 +238,15 @@ function timeOfDayMs() {
 // ─── State Helpers ────────────────────────────────────────────────────────────
 
 // Load a child preset as the foreground timer without touching backgroundParent.
-// If useParentRemaining, snaps targetMs to the parent's currentMs at call time.
+// The last child in the parent's list always snaps to the parent's remaining time.
+// Any child with useParentRemaining also snaps.
 function fireChild(child) {
-  const targetMs = (child.useParentRemaining && backgroundParent)
-    ? backgroundParent.currentMs
-    : child.targetMs;
+  const parentPreset = backgroundParent ? presets.find(p => p.id === backgroundParent.id) : null;
+  const isLastChild  = parentPreset && Array.isArray(parentPreset.children) &&
+                       parentPreset.children.length > 0 &&
+                       parentPreset.children[parentPreset.children.length - 1] === child.id;
+  const snapToParent = (isLastChild || child.useParentRemaining) && backgroundParent;
+  const targetMs = snapToParent ? backgroundParent.currentMs : child.targetMs;
   timerState.mode            = child.mode || "countdown";
   timerState.targetMs        = targetMs;
   timerState.currentMs       = child.mode === "countup" ? 0 : targetMs;
@@ -254,12 +268,13 @@ function getFullState() {
   if (backgroundParent) {
     const parentPreset = presets.find(p => p.id === backgroundParent.id);
     parentContext = {
-      id:        backgroundParent.id,
-      name:      parentPreset ? parentPreset.name : "Session",
-      currentMs: backgroundParent.currentMs,
-      targetMs:  backgroundParent.targetMs,
+      id:         backgroundParent.id,
+      name:       parentPreset ? parentPreset.name : "Session",
+      currentMs:  backgroundParent.currentMs,
+      targetMs:   backgroundParent.targetMs,
       endReached: backgroundParent.endReached,
-      childIds:  parentPreset ? (parentPreset.children || []) : [],
+      running:    backgroundParent.running,
+      childIds:   parentPreset ? (parentPreset.children || []) : [],
     };
   }
 
@@ -269,6 +284,7 @@ function getFullState() {
     message:       { ...messageConfig },
     definedColors: [...definedColors],
     parentContext,
+    displayFocus,
   };
 }
 
@@ -282,26 +298,38 @@ function handleCommand(action, payload = {}) {
         timerState.running    = true;
         timerState.endReached = false;
         if (timerState.mode === "clock") timerState.currentMs = timeOfDayMs();
+        if (backgroundParent) backgroundParent.running = true;
         startTick();
       }
       break;
 
     case "pause":
-      // Pause — stops the tick but keeps currentMs so resume works
       timerState.running = false;
+      if (backgroundParent) backgroundParent.running = false;
       stopTick();
       break;
 
     case "stop":
-      // Stop zeroes the display and clears any flash state.
+      // Stop zeroes both timers and clears flash state.
       // Does not reset targetMs — Reset still returns to the set time.
       timerState.running    = false;
       timerState.endReached = false;
       timerState.currentMs  = 0;
+      if (backgroundParent) {
+        backgroundParent.running   = false;
+        backgroundParent.currentMs = 0;
+      }
       stopTick();
       break;
 
     case "reset":
+      // In session context: re-apply parent preset from scratch (full session restart).
+      if (backgroundParent) {
+        const parentPreset = presets.find(p => p.id === backgroundParent.id);
+        if (parentPreset) applyPreset(parentPreset, false);
+        break;
+      }
+      // Standalone timer: return to set time.
       timerState.running    = false;
       timerState.endReached = false;
       stopTick();
@@ -357,9 +385,11 @@ function handleCommand(action, payload = {}) {
         if (timerState.endReached) {
           if (payload.behavior === "hold") {
             timerState.running = false;
+            if (backgroundParent) backgroundParent.running = false;
             stopTick();
           } else if (payload.behavior === "flash") {
             timerState.running = true;
+            if (backgroundParent) backgroundParent.running = true;
             startTick();
           }
           // "load" and "start" have no retroactive effect once the timer has ended
@@ -380,6 +410,38 @@ function handleCommand(action, payload = {}) {
       break;
     }
 
+    case "adjustParent": {
+      if (!backgroundParent || typeof payload.deltaMs !== "number") break;
+      backgroundParent.currentMs  = Math.max(0, backgroundParent.currentMs + payload.deltaMs);
+      backgroundParent.endReached = backgroundParent.currentMs === 0;
+      break;
+    }
+
+    case "adjustBoth": {
+      if (typeof payload.deltaMs !== "number") break;
+      // Adjust child
+      if (timerState.mode !== "clock" && timerState.mode !== "external") {
+        timerState.currentMs  = Math.max(0, timerState.currentMs + payload.deltaMs);
+        timerState.endReached = false;
+        if (timerState.mode === "countdown" && timerState.currentMs === 0 && timerState.running) {
+          handleCountdownEnd();
+        }
+      }
+      // Adjust parent
+      if (backgroundParent) {
+        backgroundParent.currentMs  = Math.max(0, backgroundParent.currentMs + payload.deltaMs);
+        backgroundParent.endReached = backgroundParent.currentMs === 0;
+      }
+      break;
+    }
+
+    case "setDisplayFocus": {
+      if (["foreground", "parent"].includes(payload.focus)) {
+        displayFocus = payload.focus;
+      }
+      break;
+    }
+
     case "setMessage":
       timerState.message          = (payload.text || "").slice(0, 200);
       timerState.messageColorSlot = payload.colorSlot || null;
@@ -393,7 +455,12 @@ function handleCommand(action, payload = {}) {
       const curIdx    = childIds.indexOf(timerState.activePresetId);
       if (curIdx < 0 || curIdx >= childIds.length - 1) break;
       const nextChild = presets.find(p => p.id === childIds[curIdx + 1]);
-      if (nextChild) { fireChild(nextChild); timerState.running = true; }
+      if (nextChild) {
+        fireChild(nextChild);
+        timerState.running    = true;
+        backgroundParent.running = true;
+        startTick();
+      }
       break;
     }
 
@@ -402,6 +469,7 @@ function handleCommand(action, payload = {}) {
       const exitParentId     = backgroundParent.id;
       const exitParentPreset = presets.find(p => p.id === exitParentId);
       backgroundParent = null;
+      displayFocus     = "foreground";
       hardStopTick();
       // Restore parent as the foreground timer (stopped at full time)
       if (exitParentPreset) {
@@ -432,15 +500,16 @@ function handlePreset(action, preset = {}) {
       const idx = presets.findIndex(p => p.id === id);
       const entry = {
         id,
-        name:               preset.name               || "Untitled",
-        mode:               preset.mode               || timerState.mode,
-        targetMs:           preset.targetMs            ?? timerState.targetMs,
-        endBehavior:        preset.endBehavior         || timerState.endBehavior,
-        displayConfig:      preset.displayConfig       || { ...displayConfig },
-        colorSlot:          preset.colorSlot           ?? null,
-        children:           preset.children            || [],
-        parentId:           preset.parentId            ?? null,
-        useParentRemaining: preset.useParentRemaining  ?? false,
+        name:                preset.name               || "Untitled",
+        mode:                preset.mode               || timerState.mode,
+        targetMs:            preset.targetMs            ?? timerState.targetMs,
+        endBehavior:         preset.endBehavior         || timerState.endBehavior,
+        displayConfig:       preset.displayConfig       || { ...displayConfig },
+        colorSlot:           preset.colorSlot           ?? null,
+        children:            preset.children            || [],
+        parentId:            preset.parentId            ?? null,
+        useParentRemaining:  preset.useParentRemaining  ?? false,
+        defaultDisplayFocus: preset.defaultDisplayFocus ?? "foreground",
       };
       if (idx >= 0) presets[idx] = entry; else presets.push(entry);
       // If saving a child, auto-link into parent's children array
@@ -508,11 +577,13 @@ function handlePreset(action, preset = {}) {
           if (!backgroundParent || backgroundParent.id !== found.parentId) {
             hardStopTick();
             backgroundParent = {
-              id:        parent.id,
-              currentMs: parent.targetMs,
-              targetMs:  parent.targetMs,
+              id:         parent.id,
+              currentMs:  parent.targetMs,
+              targetMs:   parent.targetMs,
               endReached: false,
+              running:    false,
             };
+            displayFocus = parent.defaultDisplayFocus || "foreground";
           }
           fireChild(found);
         }
@@ -584,6 +655,11 @@ function handlePreset(action, preset = {}) {
         presets[idx].useParentRemaining = !!preset.useParentRemaining;
       }
 
+      if (preset.defaultDisplayFocus !== undefined &&
+          ["foreground", "parent"].includes(preset.defaultDisplayFocus)) {
+        presets[idx].defaultDisplayFocus = preset.defaultDisplayFocus;
+      }
+
       savePresetsFile(presets);
       break;
     }
@@ -618,22 +694,22 @@ function handlePreset(action, preset = {}) {
 function applyPreset(preset, autoStart = false) {
   // Parent preset with children → enter nested context
   if (Array.isArray(preset.children) && preset.children.length > 0) {
-    // Already in this session — don't reset the clock, just re-fire the first child
-    const alreadyInSession = backgroundParent && backgroundParent.id === preset.id;
-    if (!alreadyInSession) {
-      hardStopTick();
-      backgroundParent = {
-        id:        preset.id,
-        currentMs: preset.targetMs,
-        targetMs:  preset.targetMs,
-        endReached: false,
-      };
-    }
+    // Always reset the session (covers both fresh load and session reset)
+    hardStopTick();
+    backgroundParent = {
+      id:         preset.id,
+      currentMs:  preset.targetMs,
+      targetMs:   preset.targetMs,
+      endReached: false,
+      running:    false,
+    };
+    displayFocus = preset.defaultDisplayFocus || "foreground";
     const firstChild = presets.find(p => p.id === preset.children[0]);
     if (firstChild) {
       fireChild(firstChild);
       if (autoStart) {
-        timerState.running = true;
+        timerState.running    = true;
+        backgroundParent.running = true;
         startTick();
       }
     }
@@ -642,6 +718,7 @@ function applyPreset(preset, autoStart = false) {
 
   // Normal single-timer load — exit any existing nested context
   backgroundParent = null;
+  displayFocus = "foreground";
   hardStopTick();
   timerState.mode           = preset.mode;
   timerState.targetMs       = preset.targetMs;

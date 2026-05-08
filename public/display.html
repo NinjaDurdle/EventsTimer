@@ -215,7 +215,12 @@
 
     // ── State Application ──────────────────────────────────────────────────────
 
-    function applyState({ timer, display, message: msgCfg, definedColors }) {
+    function applyState({ timer, display, message: msgCfg, definedColors, parentContext, displayFocus }) {
+      // When focused on the parent clock, substitute its currentMs and endReached.
+      // All styling (color, font, label, endBehavior) always comes from the running child.
+      if (displayFocus === "parent" && parentContext) {
+        timer = { ...timer, currentMs: parentContext.currentMs, endReached: parentContext.endReached };
+      }
       // CSS variables
       root.style.setProperty("--font",        display.font);
       root.style.setProperty("--font-size",   display.fontSize);
