@@ -14,7 +14,7 @@ const path     = require("path");
 const { exec, execSync } = require("child_process");
 const { WebSocketServer, WebSocket } = require("ws");
 
-const TIMER_VERSION = "1.9.0";
+const TIMER_VERSION = "1.10.0";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -24,10 +24,27 @@ const PUBLIC_DIR   = path.join(__dirname, "public");
 const TICK_MS      = 100;
 
 const CONFIG_DEFAULTS = {
-  httpPort:        80,
-  hostname:        "timer",
-  iface:           "eth0",
-  definedColors:   ["#4fc978", "#f9c74f", "#f95f4f"],
+  httpPort:  80,
+  hostname:  "timer",
+  iface:     "eth0",
+  colorSlots: [
+    { name: "Normal",  textColor: "#ffffff", labelColor: "#ffffff", bgColor: "#000000", flashColor: "#ff0000", msgBgOpacity: 0 },
+    { name: "Good",    textColor: "#4fc978", labelColor: "#4fc978", bgColor: "#000000", flashColor: "#ff0000", msgBgOpacity: 0 },
+    { name: "Warning", textColor: "#f9c74f", labelColor: "#f9c74f", bgColor: "#000000", flashColor: "#ff0000", msgBgOpacity: 0 },
+    { name: "Alert",   textColor: "#f95f4f", labelColor: "#f95f4f", bgColor: "#000000", flashColor: "#ff0000", msgBgOpacity: 0 },
+  ],
+  timerDisplaySlots: [
+    { name: "Default", font: "monospace", fontSize: "20", showSubseconds: false, visibleDigits: [false,false,true,true,true,true], positionX: 50, positionY: 50, colorTriggers: [] },
+    { name: "Slot 2",  font: "monospace", fontSize: "20", showSubseconds: false, visibleDigits: [false,false,true,true,true,true], positionX: 50, positionY: 50, colorTriggers: [] },
+    { name: "Slot 3",  font: "monospace", fontSize: "20", showSubseconds: false, visibleDigits: [false,false,true,true,true,true], positionX: 50, positionY: 50, colorTriggers: [] },
+    { name: "Slot 4",  font: "monospace", fontSize: "20", showSubseconds: false, visibleDigits: [false,false,true,true,true,true], positionX: 50, positionY: 50, colorTriggers: [] },
+  ],
+  msgDisplaySlots: [
+    { name: "Default", font: "monospace", fontSize: "5", positionX: 50, positionY: 90, width: 80 },
+    { name: "Slot B",  font: "monospace", fontSize: "5", positionX: 50, positionY: 90, width: 80 },
+    { name: "Slot C",  font: "monospace", fontSize: "5", positionX: 50, positionY: 90, width: 80 },
+    { name: "Slot D",  font: "monospace", fontSize: "5", positionX: 50, positionY: 90, width: 80 },
+  ],
 };
 
 function loadConfig() {
@@ -45,28 +62,43 @@ function saveConfig(cfg) {
 
 let config = loadConfig();
 
-// Ensure definedColors is always a valid 3-element array, both in memory and persisted
-if (!Array.isArray(config.definedColors) || config.definedColors.length !== 3) {
-  config.definedColors = CONFIG_DEFAULTS.definedColors;
+// Migrate old definedColors → colorSlots[0..2].textColor/labelColor
+if (!Array.isArray(config.colorSlots) || config.colorSlots.length !== 4) {
+  const defs = CONFIG_DEFAULTS.colorSlots.map(s => ({ ...s }));
+  if (Array.isArray(config.definedColors)) {
+    config.definedColors.slice(0, 3).forEach((hex, i) => {
+      defs[i + 1].textColor  = hex;
+      defs[i + 1].labelColor = hex;
+    });
+  }
+  config.colorSlots = defs;
+  delete config.definedColors;
   saveConfig(config);
 }
-let definedColors = config.definedColors;
+if (!Array.isArray(config.timerDisplaySlots) || config.timerDisplaySlots.length !== 4) {
+  config.timerDisplaySlots = CONFIG_DEFAULTS.timerDisplaySlots.map(s => ({ ...s }));
+  saveConfig(config);
+}
+if (!Array.isArray(config.msgDisplaySlots) || config.msgDisplaySlots.length !== 4) {
+  config.msgDisplaySlots = CONFIG_DEFAULTS.msgDisplaySlots.map(s => ({ ...s }));
+  saveConfig(config);
+}
 
 // ─── Timer State ──────────────────────────────────────────────────────────────
 
 let timerState = {
-  mode:           "countdown",
-  running:        false,
-  currentMs:      5 * 60 * 1000,
-  targetMs:       5 * 60 * 1000,
-  endBehavior:    "flash",
-  activePresetId: null, // preset currently loaded into transport
-  nextPresetId:   null, // on-deck preset — auto-advances when active changes, operator can override
-  endReached:       false,
-  message:          "",   // active message text, empty = hidden
-  lastExternalMs:   null, // Date.now() of last setTime in external mode, null if not external
-  activeColorSlot:  null, // 1|2|3 — from active preset; null = use default display colors
-  messageColorSlot: null, // 1|2|3 — from setMessage command; null = use default message colors
+  mode:              "countdown",
+  running:           false,
+  currentMs:         5 * 60 * 1000,
+  targetMs:          5 * 60 * 1000,
+  endBehavior:       "flash",
+  activePresetId:    null,
+  nextPresetId:      null,
+  endReached:        false,
+  messages:          [{ text: "", colorSlot: 1 }, { text: "", colorSlot: 1 }, { text: "", colorSlot: 1 }, { text: "", colorSlot: 1 }],
+  lastExternalMs:    null,
+  activeColorSlot:   1,
+  activeDisplaySlot: 1,
 };
 
 // Background parent state — set when a child timer is foreground in a nested session.
@@ -77,38 +109,6 @@ let backgroundParent = null; // { id, currentMs, targetMs, endReached, running }
 // Reset to "foreground" whenever a session is exited or a standalone preset loads.
 let displayFocus = "foreground";
 
-// ─── Display Config ───────────────────────────────────────────────────────────
-// visibleDigits: array of 6 booleans [tensHours, onesHours, tensMins, onesMins, tensSecs, onesSecs]
-// colorTriggers: [{atMs, textColor, bgColor}] sorted descending by atMs — countdown only
-// positionX/Y: percentage 0-100 for display position on screen
-
-let displayConfig = {
-  font:           "monospace",
-  fontSize:       "20",
-  textColor:      "#ffffff",
-  bgColor:        "#000000",
-  showSubseconds: false,
-  label:          "",
-  flashColor:     "#ff0000",
-  visibleDigits:  [false, false, true, true, true, true], // default: MM:SS
-  colorTriggers:  [],   // [{atMs: 60000, textColor: "#ff0000", bgColor: "#000000"}]
-  positionX:      50,   // percent from left
-  positionY:      50,   // percent from top
-};
-
-// ─── Message Config ───────────────────────────────────────────────────────────
-// Independently styled from the timer display
-
-let messageConfig = {
-  font:      "monospace",
-  fontSize:  "5",       // vw
-  textColor: "#ffffff",
-  bgColor:   "#000000",
-  bgOpacity: 0,         // 0 = fully transparent, 100 = fully opaque
-  positionX: 50,        // percent from left
-  positionY: 90,        // percent from top (default near bottom)
-  width:     80,        // percent of screen width
-};
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
 
@@ -116,13 +116,23 @@ function loadPresets() {
   try {
     if (fs.existsSync(PRESETS_FILE)) {
       const raw = JSON.parse(fs.readFileSync(PRESETS_FILE, "utf8"));
-      return raw.map(p => ({
-        children:            [],
-        parentId:            null,
-        useParentRemaining:  false,
-        defaultDisplayFocus: "foreground",
-        ...p,
-      }));
+      return raw.map(p => {
+        // Migrate: promote displayConfig.label → preset.label
+        if (p.displayConfig && !p.label) p.label = p.displayConfig.label || "";
+        const { displayConfig: _dc, ...rest } = p;
+        return {
+          children:            [],
+          parentId:            null,
+          useParentRemaining:  false,
+          defaultDisplayFocus: "foreground",
+          colorSlot:           1,
+          displaySlot:         1,
+          ...rest,
+          // Ensure colorSlot/displaySlot are always valid numbers
+          colorSlot:   (rest.colorSlot   != null ? rest.colorSlot   : 1),
+          displaySlot: (rest.displaySlot != null ? rest.displaySlot : 1),
+        };
+      });
     }
   } catch (e) { console.warn("Could not load presets.json:", e.message); }
   return [];
@@ -247,16 +257,16 @@ function fireChild(child) {
                        parentPreset.children[parentPreset.children.length - 1] === child.id;
   const snapToParent = (isLastChild || child.useParentRemaining) && backgroundParent;
   const targetMs = snapToParent ? backgroundParent.currentMs : child.targetMs;
-  timerState.mode            = child.mode || "countdown";
-  timerState.targetMs        = targetMs;
-  timerState.currentMs       = child.mode === "countup" ? 0 : targetMs;
-  timerState.endBehavior     = child.endBehavior;
-  timerState.endReached      = false;
-  timerState.running         = false;
-  timerState.activePresetId  = child.id;
-  timerState.nextPresetId    = null; // children don't use the flat nextPresetId
-  timerState.activeColorSlot = child.colorSlot ?? null;
-  if (child.displayConfig) Object.assign(displayConfig, child.displayConfig);
+  timerState.mode              = child.mode || "countdown";
+  timerState.targetMs          = targetMs;
+  timerState.currentMs         = child.mode === "countup" ? 0 : targetMs;
+  timerState.endBehavior       = child.endBehavior;
+  timerState.endReached        = false;
+  timerState.running           = false;
+  timerState.activePresetId    = child.id;
+  timerState.nextPresetId      = null;
+  timerState.activeColorSlot   = child.colorSlot   ?? 1;
+  timerState.activeDisplaySlot = child.displaySlot  ?? 1;
 }
 
 function getFullState() {
@@ -278,11 +288,45 @@ function getFullState() {
     };
   }
 
+  const cs = config.colorSlots[(timerState.activeColorSlot  || 1) - 1] || config.colorSlots[0];
+  const ds = config.timerDisplaySlots[(timerState.activeDisplaySlot || 1) - 1] || config.timerDisplaySlots[0];
+
+  const messages = timerState.messages.map((m, i) => {
+    const mcs = config.colorSlots[(m.colorSlot || 1) - 1] || config.colorSlots[0];
+    const mds = config.msgDisplaySlots[i] || config.msgDisplaySlots[0];
+    return {
+      text:      m.text || "",
+      colorSlot: m.colorSlot || 1,
+      font:      mds.font,
+      fontSize:  mds.fontSize,
+      textColor: mcs.textColor,
+      bgColor:   mcs.bgColor,
+      bgOpacity: mcs.msgBgOpacity,
+      positionX: mds.positionX,
+      positionY: mds.positionY,
+      width:     mds.width,
+    };
+  });
+
   return {
-    timer:         { ...timerState, activePresetName: activePreset ? activePreset.name : null },
-    display:       { ...displayConfig },
-    message:       { ...messageConfig },
-    definedColors: [...definedColors],
+    timer: { ...timerState, activePresetName: activePreset ? activePreset.name : null },
+    display: {
+      font:           ds.font,
+      fontSize:       ds.fontSize,
+      textColor:      cs.textColor,
+      labelColor:     cs.labelColor,
+      bgColor:        cs.bgColor,
+      flashColor:     cs.flashColor,
+      showSubseconds: ds.showSubseconds,
+      visibleDigits:  ds.visibleDigits,
+      colorTriggers:  ds.colorTriggers,
+      positionX:      ds.positionX,
+      positionY:      ds.positionY,
+    },
+    messages,
+    colorSlots:        config.colorSlots,
+    timerDisplaySlots: config.timerDisplaySlots,
+    msgDisplaySlots:   config.msgDisplaySlots,
     parentContext,
     displayFocus,
   };
@@ -442,10 +486,14 @@ function handleCommand(action, payload = {}) {
       break;
     }
 
-    case "setMessage":
-      timerState.message          = (payload.text || "").slice(0, 200);
-      timerState.messageColorSlot = payload.colorSlot || null;
+    case "setMessage": {
+      const slotIdx = Math.max(0, Math.min(3, (payload.msgDisplaySlot || 1) - 1));
+      timerState.messages[slotIdx] = {
+        text:      (payload.text || "").slice(0, 200),
+        colorSlot: payload.colorSlot || 1,
+      };
       break;
+    }
 
     case "fireNextChild": {
       if (!backgroundParent) break;
@@ -480,11 +528,11 @@ function handleCommand(action, payload = {}) {
         timerState.endReached     = false;
         timerState.running        = false;
         timerState.activePresetId = exitParentPreset.id;
-        timerState.activeColorSlot = exitParentPreset.colorSlot ?? null;
+        timerState.activeColorSlot   = exitParentPreset.colorSlot   ?? 1;
+        timerState.activeDisplaySlot = exitParentPreset.displaySlot  ?? 1;
         const tl  = presets.filter(p => !p.parentId);
         const idx = tl.findIndex(p => p.id === exitParentPreset.id);
         timerState.nextPresetId = (idx !== -1 && idx < tl.length - 1) ? tl[idx + 1].id : null;
-        if (exitParentPreset.displayConfig) Object.assign(displayConfig, exitParentPreset.displayConfig);
       } else {
         timerState.activePresetId = null;
       }
@@ -504,8 +552,8 @@ function handlePreset(action, preset = {}) {
         mode:                preset.mode               || timerState.mode,
         targetMs:            preset.targetMs            ?? timerState.targetMs,
         endBehavior:         preset.endBehavior         || timerState.endBehavior,
-        displayConfig:       preset.displayConfig       || { ...displayConfig },
-        colorSlot:           preset.colorSlot           ?? null,
+        colorSlot:           preset.colorSlot           ?? 1,
+        displaySlot:         preset.displaySlot         ?? 1,
         children:            preset.children            || [],
         parentId:            preset.parentId            ?? null,
         useParentRemaining:  preset.useParentRemaining  ?? false,
@@ -524,15 +572,15 @@ function handlePreset(action, preset = {}) {
       break;
     }
     case "overwrite": {
-      // Save current timer + display state into an existing preset, keeping its id and name
       const idx = presets.findIndex(p => p.id === preset.id);
       if (idx === -1) break;
       presets[idx] = {
         ...presets[idx],
-        mode:          timerState.mode,
-        targetMs:      timerState.targetMs,
-        endBehavior:   timerState.endBehavior,
-        displayConfig: { ...displayConfig },
+        mode:         timerState.mode,
+        targetMs:     timerState.targetMs,
+        endBehavior:  timerState.endBehavior,
+        colorSlot:    timerState.activeColorSlot,
+        displaySlot:  timerState.activeDisplaySlot,
       };
       savePresetsFile(presets);
       break;
@@ -647,8 +695,13 @@ function handlePreset(action, preset = {}) {
       }
 
       if (preset.colorSlot !== undefined) {
-        presets[idx].colorSlot = preset.colorSlot ?? null;
-        if (isActive) timerState.activeColorSlot = preset.colorSlot ?? null;
+        presets[idx].colorSlot = preset.colorSlot ?? 1;
+        if (isActive) timerState.activeColorSlot = preset.colorSlot ?? 1;
+      }
+
+      if (preset.displaySlot !== undefined) {
+        presets[idx].displaySlot = preset.displaySlot ?? 1;
+        if (isActive) timerState.activeDisplaySlot = preset.displaySlot ?? 1;
       }
 
       if (preset.useParentRemaining !== undefined) {
@@ -725,16 +778,15 @@ function applyPreset(preset, autoStart = false) {
   timerState.currentMs      = preset.mode === "countup" ? 0
                             : preset.mode === "clock"   ? timeOfDayMs()
                             : preset.targetMs;
-  timerState.endBehavior    = preset.endBehavior;
-  timerState.endReached      = false;
-  timerState.activePresetId  = preset.id;
-  timerState.activeColorSlot = preset.colorSlot ?? null;
-  // Auto-advance on-deck to the next top-level preset
+  timerState.endBehavior       = preset.endBehavior;
+  timerState.endReached        = false;
+  timerState.activePresetId    = preset.id;
+  timerState.activeColorSlot   = preset.colorSlot   ?? 1;
+  timerState.activeDisplaySlot = preset.displaySlot  ?? 1;
   const topLevel = presets.filter(p => !p.parentId);
   const idx      = topLevel.findIndex(p => p.id === preset.id);
   timerState.nextPresetId   = (idx !== -1 && idx < topLevel.length - 1)
                             ? topLevel[idx + 1].id : null;
-  if (preset.displayConfig) Object.assign(displayConfig, preset.displayConfig);
   if (autoStart || preset.mode === "clock") {
     timerState.running = true;
     startTick();
@@ -744,40 +796,35 @@ function applyPreset(preset, autoStart = false) {
 }
 
 function handleConfig(updates) {
-  // Timer display config keys
-  const displayKeys = ["font", "fontSize", "textColor", "bgColor",
-                       "showSubseconds", "label", "flashColor",
-                       "positionX", "positionY"];
-  for (const key of displayKeys) {
-    if (key in updates) displayConfig[key] = updates[key];
-  }
-
-  // visibleDigits — array of 6 booleans
-  if (Array.isArray(updates.visibleDigits) && updates.visibleDigits.length === 6) {
-    displayConfig.visibleDigits = updates.visibleDigits.map(Boolean);
-  }
-
-  // colorTriggers — [{atMs, textColor, bgColor}]
-  // Sorted descending so the display can find the active trigger with a simple find()
-  if (Array.isArray(updates.colorTriggers)) {
-    displayConfig.colorTriggers = updates.colorTriggers
-      .filter(t => typeof t.atMs === "number" && t.textColor && t.bgColor)
-      .sort((a, b) => b.atMs - a.atMs);
-  }
-
-  // Message config keys
-  const msgKeys = ["font", "fontSize", "textColor", "bgColor", "bgOpacity", "positionX", "positionY", "width"];
-  if (updates.messageConfig && typeof updates.messageConfig === "object") {
-    for (const key of msgKeys) {
-      if (key in updates.messageConfig) messageConfig[key] = updates.messageConfig[key];
+  if (typeof updates.colorSlot === "number" && updates.data && typeof updates.data === "object") {
+    const idx = updates.colorSlot - 1;
+    if (idx >= 0 && idx < 4) {
+      config.colorSlots[idx] = { ...config.colorSlots[idx], ...updates.data };
+      saveConfig(config);
     }
   }
 
-  // Defined Colors — persist to config.json so they survive server restarts
-  if (Array.isArray(updates.definedColors) && updates.definedColors.length === 3) {
-    definedColors = updates.definedColors.map(c => (typeof c === "string" ? c : "#ffffff"));
-    config.definedColors = definedColors;
-    saveConfig(config);
+  if (typeof updates.timerDisplaySlot === "number" && updates.data && typeof updates.data === "object") {
+    const idx = updates.timerDisplaySlot - 1;
+    if (idx >= 0 && idx < 4) {
+      const d = { ...updates.data };
+      if (Array.isArray(d.visibleDigits) && d.visibleDigits.length === 6)
+        d.visibleDigits = d.visibleDigits.map(Boolean);
+      if (Array.isArray(d.colorTriggers))
+        d.colorTriggers = d.colorTriggers
+          .filter(t => typeof t.atMs === "number" && t.textColor && t.bgColor)
+          .sort((a, b) => b.atMs - a.atMs);
+      config.timerDisplaySlots[idx] = { ...config.timerDisplaySlots[idx], ...d };
+      saveConfig(config);
+    }
+  }
+
+  if (typeof updates.msgDisplaySlot === "number" && updates.data && typeof updates.data === "object") {
+    const idx = updates.msgDisplaySlot - 1;
+    if (idx >= 0 && idx < 4) {
+      config.msgDisplaySlots[idx] = { ...config.msgDisplaySlots[idx], ...updates.data };
+      saveConfig(config);
+    }
   }
 }
 

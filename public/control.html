@@ -715,6 +715,22 @@
     }
     .btn-snap-parent:hover { border-color: var(--accent); color: var(--accent); }
 
+    /* ── Display/message slot chips ── */
+    .slot-chip {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.6rem;
+      font-weight: 700;
+      padding: 1px 4px;
+      border-radius: 3px;
+      cursor: pointer;
+      line-height: 1.4;
+      transition: all 0.12s;
+    }
+    .slot-chip:hover { border-color: var(--accent); color: var(--accent); }
+    .slot-chip.active { background: var(--accent); border-color: var(--accent); color: #000; }
+
     /* ── Hide number input spinners ── */
     input[type="number"]::-webkit-inner-spin-button,
     input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -876,9 +892,20 @@
   <script>
     // ── State ──────────────────────────────────────────────────────────────────
     let ws;
-    let latestState         = null;
-    let latestPresets       = [];
-    let latestDefinedColors = ["#4fc978", "#f9c74f", "#f95f4f"];
+    let latestState            = null;
+    let latestPresets          = [];
+    let latestColorSlots       = [
+      { name: "Normal",  textColor: "#ffffff" },
+      { name: "Good",    textColor: "#4fc978" },
+      { name: "Warning", textColor: "#f9c74f" },
+      { name: "Alert",   textColor: "#f95f4f" },
+    ];
+    let latestTimerDisplaySlots = [
+      { name: "Default" }, { name: "Slot 2" }, { name: "Slot 3" }, { name: "Slot 4" },
+    ];
+    let latestMsgDisplaySlots = [
+      { name: "Default" }, { name: "Slot B" }, { name: "Slot C" }, { name: "Slot D" },
+    ];
     let latestParentContext = null;
     let latestDisplayFocus  = "foreground";
     let reconnectDelay      = 1000;
@@ -959,8 +986,10 @@
 
     // ── Render state ───────────────────────────────────────────────────────────
 
-    function renderState({ timer, display, definedColors, parentContext, displayFocus }) {
-      if (Array.isArray(definedColors)) latestDefinedColors = definedColors;
+    function renderState({ timer, display, messages, colorSlots, timerDisplaySlots, msgDisplaySlots, parentContext, displayFocus }) {
+      if (Array.isArray(colorSlots))        latestColorSlots        = colorSlots;
+      if (Array.isArray(timerDisplaySlots)) latestTimerDisplaySlots = timerDisplaySlots;
+      if (Array.isArray(msgDisplaySlots))   latestMsgDisplaySlots   = msgDisplaySlots;
       latestParentContext = parentContext || null;
       latestDisplayFocus  = displayFocus  || "foreground";
 
@@ -985,21 +1014,16 @@
       const isExternal = timer.mode === "external";
       endCard.style.display = isExternal ? "none" : "";
 
-      const hasMsg = !!(timer.message && timer.message.trim());
-      msgStrip.textContent = hasMsg
-        ? `● ${timer.message.slice(0, 55)}${timer.message.length > 55 ? "…" : ""}`
+      // Active message strip — show all non-empty slots
+      const activeMessages = Array.isArray(messages)
+        ? messages.map((m, i) => m.text ? `${String.fromCharCode(65+i)}: ${m.text}` : null).filter(Boolean)
+        : [];
+      msgStrip.textContent = activeMessages.length
+        ? `● ${activeMessages.join("  ·  ").slice(0, 80)}`
         : "";
 
       // Update message card active states
-      const activeMsg = (timer.message || "").trim();
-      document.querySelectorAll(".msg-card").forEach(card => {
-        const text = card.querySelector(".msg-card-text").value.trim();
-        const isActive = !!(activeMsg && text === activeMsg);
-        card.classList.toggle("msg-active", isActive);
-        const btn = card.querySelector(".msg-card-btn");
-        btn.textContent = isActive ? "Clear" : "Send";
-        btn.classList.toggle("has-message", isActive);
-      });
+      syncMessageCardStates(messages);
 
       // Session transport block
       const sessionTransport = document.getElementById("session-transport");
@@ -1214,6 +1238,16 @@
       });
       metaRow.append(slotSep, slotPicker);
 
+      // Timer display slot picker
+      const dsSep = document.createElement("span");
+      dsSep.className   = "meta-sep";
+      dsSep.textContent = "·";
+      const dsPicker = buildDisplaySlotPicker(p.displaySlot ?? 1, (slot) => {
+        send({ type: "preset", payload: { action: "update", preset: { id: p.id, displaySlot: slot } } });
+        p.displaySlot = slot;
+      });
+      metaRow.append(dsSep, dsPicker);
+
       // useParentRemaining toggle for child items (appended after color picker)
       if (isChild) {
         const snapSep = document.createElement("span");
@@ -1301,7 +1335,8 @@
             mode:        "countdown",
             targetMs:    5 * 60 * 1000,
             endBehavior: "hold",
-            displayConfig: latestState ? { ...latestState.display } : {},
+            colorSlot:   1,
+            displaySlot: 1,
             parentId:    p.id,
             useParentRemaining: false,
           }}});
@@ -1698,7 +1733,8 @@
         mode:        "countdown",
         targetMs:    5 * 60 * 1000,
         endBehavior: "hold",
-        displayConfig: latestState ? { ...latestState.display } : {},
+        colorSlot:   1,
+        displaySlot: 1,
       }}});
     });
 
@@ -1723,25 +1759,32 @@
       const list = document.getElementById("message-list");
       list.innerHTML = "";
       msgs.forEach(m => list.appendChild(buildMessageCard(m)));
-      if (latestState) syncMessageCardStates(latestState.timer.message || "");
+      if (latestState) syncMessageCardStates(latestState.messages || []);
     }
 
-    function syncMessageCardStates(activeMsg) {
-      activeMsg = activeMsg.trim();
+    function syncMessageCardStates(messages) {
+      const msgs = Array.isArray(messages) ? messages : [];
       document.querySelectorAll(".msg-card").forEach(card => {
-        const text = card.querySelector(".msg-card-text").value.trim();
-        const isActive = !!(activeMsg && text === activeMsg);
-        card.classList.toggle("msg-active", isActive);
+        const cardText = card.querySelector(".msg-card-text").value.trim();
+        const cardSlot = (parseInt(card.dataset.msgSlot, 10) || 1) - 1; // 0-indexed
+        const slotMsg  = msgs[cardSlot];
+        const slotText = (slotMsg ? slotMsg.text : "").trim();
+
+        const isExact    = slotText.length > 0 && cardText === slotText;
+        const isSameSlot = slotText.length > 0 && !isExact;
+
+        card.classList.toggle("msg-active", isExact);
         const btn = card.querySelector(".msg-card-btn");
-        btn.textContent = isActive ? "Clear" : "Send";
-        btn.classList.toggle("has-message", isActive);
+        btn.classList.toggle("has-message", isExact);
+        btn.textContent = isExact ? "Clear" : isSameSlot ? "Replace" : "Send";
       });
     }
 
     function buildMessageCard(m) {
       const card = document.createElement("div");
       card.className = "msg-card card";
-      card.dataset.msgId = m.id;
+      card.dataset.msgId  = m.id;
+      card.dataset.msgSlot = m.msgDisplaySlot || 1;
 
       const ta = document.createElement("textarea");
       ta.className = "msg-card-text";
@@ -1750,7 +1793,7 @@
       ta.value = m.text;
       ta.rows = 2;
 
-      // Color slot row
+      // Color + layout slot row
       const slotRow   = document.createElement("div");
       slotRow.className = "color-slot-row";
       const slotLabel = document.createElement("span");
@@ -1761,10 +1804,22 @@
         const idx  = msgs.findIndex(x => x.id === m.id);
         if (idx !== -1) { msgs[idx].colorSlot = slot; saveMessages(msgs); m.colorSlot = slot; }
         if (card.classList.contains("msg-active")) {
-          send({ type: "command", payload: { action: "setMessage", text: ta.value.trim(), colorSlot: slot } });
+          send({ type: "command", payload: { action: "setMessage", text: ta.value.trim(), colorSlot: slot, msgDisplaySlot: m.msgDisplaySlot || 1 } });
         }
       });
-      slotRow.append(slotLabel, slotPicker);
+      const layoutLabel = document.createElement("span");
+      layoutLabel.className   = "slot-label";
+      layoutLabel.textContent = "Layout:";
+      const layoutPicker = buildMsgDisplaySlotPicker(m.msgDisplaySlot ?? 1, (slot) => {
+        const msgs = getMessages();
+        const idx  = msgs.findIndex(x => x.id === m.id);
+        if (idx !== -1) { msgs[idx].msgDisplaySlot = slot; saveMessages(msgs); m.msgDisplaySlot = slot; }
+        card.dataset.msgSlot = slot;
+        if (card.classList.contains("msg-active")) {
+          send({ type: "command", payload: { action: "setMessage", text: ta.value.trim(), colorSlot: m.colorSlot || null, msgDisplaySlot: slot } });
+        }
+      });
+      slotRow.append(slotLabel, slotPicker, layoutLabel, layoutPicker);
 
       const footer = document.createElement("div");
       footer.className = "msg-card-footer";
@@ -1788,19 +1843,21 @@
       });
 
       btn.addEventListener("click", () => {
+        const slot = m.msgDisplaySlot || 1;
         if (card.classList.contains("msg-active")) {
-          send({ type: "command", payload: { action: "setMessage", text: "" } });
+          send({ type: "command", payload: { action: "setMessage", text: "", msgDisplaySlot: slot } });
         } else {
           const text = ta.value.trim();
-          if (text) send({ type: "command", payload: { action: "setMessage", text, colorSlot: m.colorSlot || null } });
+          if (text) send({ type: "command", payload: { action: "setMessage", text, colorSlot: m.colorSlot || null, msgDisplaySlot: slot } });
         }
       });
 
       delBtn.addEventListener("click", () => {
         const wasActive = card.classList.contains("msg-active");
+        const slot = m.msgDisplaySlot || 1;
         saveMessages(getMessages().filter(x => x.id !== m.id));
         renderMessageCards();
-        if (wasActive) send({ type: "command", payload: { action: "setMessage", text: "" } });
+        if (wasActive) send({ type: "command", payload: { action: "setMessage", text: "", msgDisplaySlot: slot } });
       });
 
       return card;
@@ -2085,11 +2142,12 @@
       const wrap = document.createElement("span");
       wrap.style.cssText = "display:inline-flex;align-items:center;gap:3px;";
 
-      [null, 1, 2, 3].forEach((slot, i) => {
+      [1, 2, 3, 4].forEach((slot) => {
         const dot = document.createElement("button");
         dot.className = "slot-dot" + (currentSlot === slot ? " active" : "");
-        dot.title     = slot === null ? "Default color" : `Color ${slot}`;
-        if (slot !== null && latestDefinedColors[i - 1]) dot.style.background = latestDefinedColors[i - 1];
+        const slotObj = latestColorSlots[slot - 1];
+        dot.title = slotObj ? slotObj.name : `Color ${slot}`;
+        if (slotObj && slotObj.textColor) dot.style.background = slotObj.textColor;
         dot.addEventListener("pointerdown", (e) => e.stopPropagation());
         dot.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -2099,6 +2157,58 @@
           onChange(slot);
         });
         wrap.appendChild(dot);
+      });
+
+      return wrap;
+    }
+
+    // ── Timer display slot picker ──────────────────────────────────────────────
+
+    function buildDisplaySlotPicker(currentSlot, onChange) {
+      const wrap = document.createElement("span");
+      wrap.style.cssText = "display:inline-flex;align-items:center;gap:3px;";
+
+      [1, 2, 3, 4].forEach((slot) => {
+        const chip = document.createElement("button");
+        chip.className = "slot-chip" + (currentSlot === slot ? " active" : "");
+        const slotObj = latestTimerDisplaySlots[slot - 1];
+        chip.title = slotObj ? slotObj.name : `Display ${slot}`;
+        chip.textContent = String(slot);
+        chip.addEventListener("pointerdown", (e) => e.stopPropagation());
+        chip.addEventListener("click", (e) => {
+          e.stopPropagation();
+          wrap.querySelectorAll(".slot-chip").forEach(c => c.classList.remove("active"));
+          chip.classList.add("active");
+          currentSlot = slot;
+          onChange(slot);
+        });
+        wrap.appendChild(chip);
+      });
+
+      return wrap;
+    }
+
+    // ── Message display slot picker ────────────────────────────────────────────
+
+    function buildMsgDisplaySlotPicker(currentSlot, onChange) {
+      const wrap = document.createElement("span");
+      wrap.style.cssText = "display:inline-flex;align-items:center;gap:3px;";
+
+      [1, 2, 3, 4].forEach((slot) => {
+        const chip = document.createElement("button");
+        chip.className = "slot-chip" + (currentSlot === slot ? " active" : "");
+        const slotObj = latestMsgDisplaySlots[slot - 1];
+        chip.title = slotObj ? slotObj.name : `Layout ${String.fromCharCode(64 + slot)}`;
+        chip.textContent = String.fromCharCode(64 + slot); // A=65, B=66...
+        chip.addEventListener("pointerdown", (e) => e.stopPropagation());
+        chip.addEventListener("click", (e) => {
+          e.stopPropagation();
+          wrap.querySelectorAll(".slot-chip").forEach(c => c.classList.remove("active"));
+          chip.classList.add("active");
+          currentSlot = slot;
+          onChange(slot);
+        });
+        wrap.appendChild(chip);
       });
 
       return wrap;

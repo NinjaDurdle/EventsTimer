@@ -1,4 +1,147 @@
 {
   "httpPort": 80,
-  "hostname": "timer"
+  "hostname": "timer",
+  "iface": "eth0",
+  "colorSlots": [
+    {
+      "name": "Normal",
+      "textColor": "#ffffff",
+      "labelColor": "#ffffff",
+      "bgColor": "#000000",
+      "flashColor": "#ff0000",
+      "msgBgOpacity": 0
+    },
+    {
+      "name": "Good",
+      "textColor": "#4fc978",
+      "labelColor": "#4fc978",
+      "bgColor": "#000000",
+      "flashColor": "#ff0000",
+      "msgBgOpacity": 0
+    },
+    {
+      "name": "Warning",
+      "textColor": "#f9c74f",
+      "labelColor": "#f9c74f",
+      "bgColor": "#000000",
+      "flashColor": "#ff0000",
+      "msgBgOpacity": 0
+    },
+    {
+      "name": "Alert",
+      "textColor": "#f95f4f",
+      "labelColor": "#f95f4f",
+      "bgColor": "#000000",
+      "flashColor": "#ff0000",
+      "msgBgOpacity": 0
+    }
+  ],
+  "timerDisplaySlots": [
+    {
+      "name": "Default",
+      "font": "monospace",
+      "fontSize": "20",
+      "showSubseconds": false,
+      "visibleDigits": [
+        false,
+        false,
+        true,
+        true,
+        true,
+        true
+      ],
+      "positionX": 50,
+      "positionY": 73,
+      "colorTriggers": [],
+      "label": ""
+    },
+    {
+      "name": "Slot 2",
+      "font": "monospace",
+      "fontSize": "20",
+      "showSubseconds": false,
+      "visibleDigits": [
+        false,
+        false,
+        true,
+        true,
+        true,
+        true
+      ],
+      "positionX": 50,
+      "positionY": 50,
+      "colorTriggers": [],
+      "label": ""
+    },
+    {
+      "name": "Slot 3",
+      "font": "monospace",
+      "fontSize": "20",
+      "showSubseconds": false,
+      "visibleDigits": [
+        false,
+        false,
+        true,
+        true,
+        true,
+        true
+      ],
+      "positionX": 50,
+      "positionY": 50,
+      "colorTriggers": [],
+      "label": ""
+    },
+    {
+      "name": "Slot 4",
+      "font": "monospace",
+      "fontSize": "20",
+      "showSubseconds": false,
+      "visibleDigits": [
+        false,
+        false,
+        true,
+        true,
+        true,
+        true
+      ],
+      "positionX": 50,
+      "positionY": 50,
+      "colorTriggers": [],
+      "label": ""
+    }
+  ],
+  "msgDisplaySlots": [
+    {
+      "name": "Default",
+      "font": "monospace",
+      "fontSize": "5",
+      "positionX": 50,
+      "positionY": 9,
+      "width": 80
+    },
+    {
+      "name": "Slot B",
+      "font": "monospace",
+      "fontSize": "5",
+      "positionX": 50,
+      "positionY": 29,
+      "width": 80
+    },
+    {
+      "name": "Slot C",
+      "font": "monospace",
+      "fontSize": "5",
+      "positionX": 50,
+      "positionY": 51,
+      "width": 80
+    },
+    {
+      "name": "Slot D",
+      "font": "monospace",
+      "fontSize": "5",
+      "positionX": 50,
+      "positionY": 90,
+      "width": 80
+    }
+  ]
 }
